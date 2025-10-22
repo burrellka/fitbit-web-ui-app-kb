@@ -248,25 +248,6 @@ app.layout = html.Div(children=[
         html.H6("Logged exercises and workouts tracked by your Fitbit device. Includes activity type, duration, calories burned, and average heart rate for each session."),
         html.Div(id='exercise_log_table', style={'max-width': '1200px', 'margin': 'auto', 'font-weight': 'bold'}, children=[]),
         html.Div(style={"height": '40px'}),
-        html.Div(className="hidden-print", style={'margin': 'auto', 'text-align': 'center'}, children=[
-            html.A(
-            href="https://ko-fi.com/A0A84F3DP",  # Your link destination
-            target="_blank",  # Opens in a new tab
-            children=[
-                html.Img(
-                    src="https://storage.ko-fi.com/cdn/kofi2.png?v=6",  # Your image URL
-                    alt="Buy Me a Coffee at ko-fi.com",
-                    style={
-                        'border': '0px', 
-                        'height': '44px',
-                        'display': 'block',
-                        'margin-left': 'auto',
-                        'margin-right': 'auto'
-                    }
-                )
-            ]
-        )
-        ]),
         html.Div(style={"height": '25px'}),
     ]),
 ])
@@ -462,16 +443,51 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
     response_spo2 = requests.get("https://api.fitbit.com/1/user/-/spo2/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
     
-    # New data endpoints
-    response_hrv = requests.get("https://api.fitbit.com/1/user/-/hrv/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    response_breathing = requests.get("https://api.fitbit.com/1/user/-/br/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    response_cardio_fitness = requests.get("https://api.fitbit.com/1/user/-/cardioscore/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    response_temperature = requests.get("https://api.fitbit.com/1/user/-/temp/core/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    response_calories = requests.get("https://api.fitbit.com/1/user/-/activities/calories/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    response_distance = requests.get("https://api.fitbit.com/1/user/-/activities/distance/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    response_floors = requests.get("https://api.fitbit.com/1/user/-/activities/floors/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    response_azm = requests.get("https://api.fitbit.com/1/user/-/activities/active-zone-minutes/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    response_activities = requests.get("https://api.fitbit.com/1/user/-/activities/list.json?afterDate="+ start_date +"&sort=asc&offset=0&limit=100", headers=headers).json()
+    # New data endpoints with error handling
+    try:
+        response_hrv = requests.get("https://api.fitbit.com/1/user/-/hrv/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        print(f"HRV API Response: {response_hrv}")
+    except Exception as e:
+        print(f"HRV API Error: {e}")
+        response_hrv = {}
+    try:
+        response_breathing = requests.get("https://api.fitbit.com/1/user/-/br/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        print(f"Breathing API Response: {response_breathing}")
+    except Exception as e:
+        print(f"Breathing API Error: {e}")
+        response_breathing = {}
+    try:
+        response_cardio_fitness = requests.get("https://api.fitbit.com/1/user/-/cardioscore/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        print(f"Cardio Fitness API Response: {response_cardio_fitness}")
+    except Exception as e:
+        print(f"Cardio Fitness API Error: {e}")
+        response_cardio_fitness = {}
+    try:
+        response_temperature = requests.get("https://api.fitbit.com/1/user/-/temp/core/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        print(f"Temperature API Response: {response_temperature}")
+    except Exception as e:
+        print(f"Temperature API Error: {e}")
+        response_temperature = {}
+    try:
+        response_calories = requests.get("https://api.fitbit.com/1/user/-/activities/calories/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+    except:
+        response_calories = {}
+    try:
+        response_distance = requests.get("https://api.fitbit.com/1/user/-/activities/distance/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+    except:
+        response_distance = {}
+    try:
+        response_floors = requests.get("https://api.fitbit.com/1/user/-/activities/floors/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+    except:
+        response_floors = {}
+    try:
+        response_azm = requests.get("https://api.fitbit.com/1/user/-/activities/active-zone-minutes/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+    except:
+        response_azm = {}
+    try:
+        response_activities = requests.get("https://api.fitbit.com/1/user/-/activities/list.json?afterDate="+ start_date +"&sort=asc&offset=0&limit=100", headers=headers).json()
+    except:
+        response_activities = {}
 
     # Processing data-----------------------------------------------------------------------------------------------------------------------
     days_name_list = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday','Sunday')
@@ -521,7 +537,10 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             steps_list.append(int(entry['value']))
 
     for entry in response_weight["body-weight"]:
-        weight_list.append(float(entry['value']))
+        # Convert kg to lbs (1 kg = 2.20462 lbs)
+        weight_kg = float(entry['value'])
+        weight_lbs = round(weight_kg * 2.20462, 1)
+        weight_list.append(weight_lbs)
     
     for entry in response_spo2:
         spo2_list += [None]*(dates_str_list.index(entry["dateTime"])-len(spo2_list))
@@ -570,13 +589,22 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             calories_list.append(int(entry['value']))
         except (KeyError, ValueError):
             calories_list.append(None)
+    # Ensure same length as dates
+    while len(calories_list) < len(dates_str_list):
+        calories_list.append(None)
     
     # Process Distance data
     for entry in response_distance.get('activities-distance', []):
         try:
-            distance_list.append(float(entry['value']))
+            # Convert km to miles (1 km = 0.621371 miles)
+            distance_km = float(entry['value'])
+            distance_miles = round(distance_km * 0.621371, 2)
+            distance_list.append(distance_miles)
         except (KeyError, ValueError):
             distance_list.append(None)
+    # Ensure same length as dates
+    while len(distance_list) < len(dates_str_list):
+        distance_list.append(None)
     
     # Process Floors data
     for entry in response_floors.get('activities-floors', []):
@@ -584,6 +612,9 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             floors_list.append(int(entry['value']))
         except (KeyError, ValueError):
             floors_list.append(None)
+    # Ensure same length as dates
+    while len(floors_list) < len(dates_str_list):
+        floors_list.append(None)
     
     # Process Active Zone Minutes data
     for entry in response_azm.get('activities-active-zone-minutes', []):
@@ -591,6 +622,9 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             azm_list.append(entry['value']['activeZoneMinutes'])
         except (KeyError, ValueError):
             azm_list.append(None)
+    # Ensure same length as dates
+    while len(azm_list) < len(dates_str_list):
+        azm_list.append(None)
 
     for i in range(0,len(dates_str_list),100):
         end_index = i+100
@@ -701,11 +735,11 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     cardio_summary_table = dash_table.DataTable(cardio_summary_df.to_dict('records'), [{"name": i, "id": i} for i in cardio_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#ef553b','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
     peak_summary_df = calculate_table_data(df_merged, "Peak Minutes")
     peak_summary_table = dash_table.DataTable(peak_summary_df.to_dict('records'), [{"name": i, "id": i} for i in peak_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#00cc96','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
-    fig_weight = px.line(df_merged, x="Date", y="weight", line_shape="spline", color_discrete_sequence=["#6b3908"], title=f"<b>Weight<br><br><sup>Overall average : {weight_avg['overall']} Unit | Last 30d average : {weight_avg['30d']} Unit</sup></b><br><br><br>")
+    fig_weight = px.line(df_merged, x="Date", y="weight", line_shape="spline", color_discrete_sequence=["#6b3908"], title=f"<b>Weight<br><br><sup>Overall average : {weight_avg['overall']} lbs | Last 30d average : {weight_avg['30d']} lbs</sup></b><br><br><br>", labels={"weight": "Weight (lbs)"})
     if df_merged["weight"].dtype != object:
-        fig_weight.add_annotation(x=df_merged.iloc[df_merged["weight"].idxmax()]["Date"], y=df_merged["weight"].max(), text=str(df_merged["weight"].max()), showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
-        fig_weight.add_annotation(x=df_merged.iloc[df_merged["weight"].idxmin()]["Date"], y=df_merged["weight"].min(), text=str(df_merged["weight"].min()), showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
-    fig_weight.add_hline(y=round(df_merged["weight"].mean(),1), line_dash="dot",annotation_text="Average : " + str(round(df_merged["weight"].mean(), 1)) + " Units", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
+        fig_weight.add_annotation(x=df_merged.iloc[df_merged["weight"].idxmax()]["Date"], y=df_merged["weight"].max(), text=str(df_merged["weight"].max()) + " lbs", showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
+        fig_weight.add_annotation(x=df_merged.iloc[df_merged["weight"].idxmin()]["Date"], y=df_merged["weight"].min(), text=str(df_merged["weight"].min()) + " lbs", showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
+    fig_weight.add_hline(y=round(df_merged["weight"].mean(),1), line_dash="dot",annotation_text="Average : " + str(round(df_merged["weight"].mean(), 1)) + " lbs", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
     weight_summary_df = calculate_table_data(df_merged, "weight")
     weight_summary_table = dash_table.DataTable(weight_summary_df.to_dict('records'), [{"name": i, "id": i} for i in weight_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#4c3b7d','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
     fig_spo2 = px.scatter(df_merged, x="Date", y="SPO2", color_discrete_sequence=["#983faa"], title=f"<b>SPO2 Percentage<br><br><sup>Overall average : {spo2_avg['overall']}% | Last 30d average : {spo2_avg['30d']}% </sup></b><br><br><br>", range_y=(90,100), labels={'SPO2':"SpO2(%)"})
@@ -786,9 +820,9 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         fig_calories.add_hline(y=df_merged["Calories"].mean(), line_dash="dot",annotation_text="Average : " + str(int(df_merged["Calories"].mean())) + " cal", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.8, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
     
     distance_avg = {'overall': round(df_merged["Distance"].mean(),2), '30d': round(df_merged["Distance"].tail(30).mean(),2)}
-    fig_distance = px.bar(df_merged, x="Date", y="Distance", color_discrete_sequence=["#33ccff"], title=f"<b>Daily Distance<br><br><sup>Overall average : {distance_avg['overall']} km | Last 30d average : {distance_avg['30d']} km</sup></b><br><br><br>")
+    fig_distance = px.bar(df_merged, x="Date", y="Distance", color_discrete_sequence=["#33ccff"], title=f"<b>Daily Distance<br><br><sup>Overall average : {distance_avg['overall']} miles | Last 30d average : {distance_avg['30d']} miles</sup></b><br><br><br>", labels={"Distance": "Distance (miles)"})
     if df_merged["Distance"].dtype != object and df_merged["Distance"].notna().any():
-        fig_distance.add_hline(y=df_merged["Distance"].mean(), line_dash="dot",annotation_text="Average : " + str(round(df_merged["Distance"].mean(), 2)) + " km", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.8, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
+        fig_distance.add_hline(y=df_merged["Distance"].mean(), line_dash="dot",annotation_text="Average : " + str(round(df_merged["Distance"].mean(), 2)) + " miles", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.8, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
     
     calories_summary_df = calculate_table_data(df_merged, "Calories")
     calories_summary_table = dash_table.DataTable(calories_summary_df.to_dict('records'), [{"name": i, "id": i} for i in calories_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#991133','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})

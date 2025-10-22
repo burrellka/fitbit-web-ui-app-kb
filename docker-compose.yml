@@ -1,7 +1,8 @@
 services:
-  fitbit-ui:
+  fitbit-ui-enhanced:
     build: .
-    container_name: fitbit-report-app
+    image: fitbit-wellness-enhanced:latest  # Your custom image name
+    container_name: fitbit-report-app-enhanced
     ports:
       - "5032:80"
     restart: unless-stopped
