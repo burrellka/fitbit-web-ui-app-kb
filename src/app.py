@@ -272,7 +272,17 @@ app.layout = html.Div(children=[
         ]),
         html.Div(id='exercise_log_table', style={'max-width': '1200px', 'margin': 'auto', 'font-weight': 'bold'}, children=[]),
         html.Div(style={"height": '20px'}),
-        html.Div(id='exercise-detail-section', style={'max-width': '1200px', 'margin': 'auto'}, children=[]),
+        html.H5("📊 Workout Details", style={'font-weight': 'bold', 'margin-top': '20px'}),
+        html.P("Select a date to view detailed heart rate zones for that workout:", style={'color': '#666'}),
+        html.Div(style={'display': 'flex', 'gap': '20px', 'align-items': 'center', 'margin': '15px 0'}, children=[
+            dcc.Dropdown(
+                id='workout-date-selector',
+                options=[],
+                placeholder="Select a workout date...",
+                style={'min-width': '250px'}
+            ),
+        ]),
+        html.Div(id='workout-detail-display', style={'margin': '20px 0'}, children=[]),
         html.Div(style={"height": '40px'}),
         
         html.H4("Sleep Quality Analysis 😴", style={'font-weight': 'bold'}),
@@ -286,7 +296,17 @@ app.layout = html.Div(children=[
             ]),
         ]),
         html.Div(style={"height": '20px'}),
-        html.Div(id='sleep-detail-section', style={'max-width': '1200px', 'margin': 'auto'}, children=[]),
+        html.H5("📊 Sleep Night Details", style={'font-weight': 'bold', 'margin-top': '20px'}),
+        html.P("Select a date to view detailed sleep stages and timeline for that night:", style={'color': '#666'}),
+        html.Div(style={'display': 'flex', 'gap': '20px', 'align-items': 'center', 'margin': '15px 0'}, children=[
+            dcc.Dropdown(
+                id='sleep-date-selector',
+                options=[],
+                placeholder="Select a sleep date...",
+                style={'min-width': '250px'}
+            ),
+        ]),
+        html.Div(id='sleep-detail-display', style={'margin': '20px 0'}, children=[]),
         html.Div(style={"height": '40px'}),
         
         html.H4("Exercise ↔ Sleep Correlations 🔗", style={'font-weight': 'bold'}),
@@ -387,33 +407,33 @@ exercise_data_store = {}
 )
 def filter_exercise_log(selected_type, current_table):
     """Filter exercise log by activity type"""
-    if not selected_type or selected_type == 'All' or not isinstance(current_table, dash_table.DataTable):
+    if not selected_type or not isinstance(current_table, dash_table.DataTable):
         return dash.no_update
     
     # Get the full data from the table
     try:
-        if isinstance(current_table, dash_table.DataTable):
-            full_data = current_table.data
-            if selected_type == 'All':
-                filtered_data = full_data
-            else:
-                filtered_data = [row for row in full_data if row.get('Activity') == selected_type]
-            
-            if filtered_data:
-                return dash_table.DataTable(
-                    filtered_data,
-                    [{"name": i, "id": i} for i in full_data[0].keys()],
-                    style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}],
-                    style_header={'backgroundColor': '#336699','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'},
-                    style_cell={'textAlign': 'center'},
-                    page_size=20
-                )
-            else:
-                return html.P(f"No {selected_type} activities in this period.", style={'text-align': 'center', 'color': '#888'})
-    except:
+        full_data = current_table.data
+        
+        # Filter based on selected type
+        if selected_type == 'All':
+            filtered_data = full_data
+        else:
+            filtered_data = [row for row in full_data if row.get('Activity') == selected_type]
+        
+        if filtered_data and len(filtered_data) > 0:
+            return dash_table.DataTable(
+                filtered_data,
+                [{"name": i, "id": i} for i in full_data[0].keys()],
+                style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}],
+                style_header={'backgroundColor': '#336699','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'},
+                style_cell={'textAlign': 'center'},
+                page_size=20
+            )
+        else:
+            return html.P(f"No {selected_type} activities in this period.", style={'text-align': 'center', 'color': '#888'})
+    except Exception as e:
+        print(f"Error filtering exercise log: {e}")
         return dash.no_update
-    
-    return dash.no_update
 
 
 def seconds_to_tick_label(seconds):
@@ -538,7 +558,7 @@ def disable_button_and_calculate(n_clicks, oauth_token, refresh_token, token_exp
     return False, True, True
 
 # Fetch data and update graphs on click of submit
-@app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_sleep', 'figure'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise-type-filter', 'options'), Output('exercise_log_table', 'children'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('graph_exercise_sleep_correlation', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
+@app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_sleep', 'figure'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise-type-filter', 'options'), Output('exercise_log_table', 'children'), Output('workout-date-selector', 'options'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('sleep-date-selector', 'options'), Output('graph_exercise_sleep_correlation', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
 Input('submit-button', 'disabled'),
 State('my-date-picker-range', 'start_date'), State('my-date-picker-range', 'end_date'), State('oauth-token', 'data'), State('advanced-metrics-toggle', 'value'),
 prevent_initial_call=True)
@@ -880,13 +900,16 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
                     else:
                         sleep_start_time = sleep_start_time + timedelta(hours=-12)
                     sleep_time_of_day = sleep_start_time.time()
-                    sleep_record_dict[sleep_record['dateOfSleep']] = {'deep': sleep_record['levels']['summary']['deep']['minutes'],
-                                                                    'light': sleep_record['levels']['summary']['light']['minutes'],
-                                                                    'rem': sleep_record['levels']['summary']['rem']['minutes'],
-                                                                    'wake': sleep_record['levels']['summary']['wake']['minutes'],
-                                                                    'total_sleep': sleep_record["minutesAsleep"],
-                                                                    'start_time_seconds': (sleep_time_of_day.hour * 3600) + (sleep_time_of_day.minute * 60) + sleep_time_of_day.second
-                                                                    }
+                    sleep_record_dict[sleep_record['dateOfSleep']] = {
+                        'deep': sleep_record['levels']['summary']['deep']['minutes'],
+                        'light': sleep_record['levels']['summary']['light']['minutes'],
+                        'rem': sleep_record['levels']['summary']['rem']['minutes'],
+                        'wake': sleep_record['levels']['summary']['wake']['minutes'],
+                        'total_sleep': sleep_record["minutesAsleep"],
+                        'start_time_seconds': (sleep_time_of_day.hour * 3600) + (sleep_time_of_day.minute * 60) + sleep_time_of_day.second,
+                        'sleep_score': sleep_record.get('efficiency', None),  # Fitbit's actual sleep score
+                        'sleep_record': sleep_record  # Store full record for drill-down
+                    }
                 except KeyError as E:
                     pass
 
@@ -1081,6 +1104,9 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
     # Exercise Log with Enhanced Data
     exercise_data = []
     activity_types = set(['All'])
+    workout_dates_for_dropdown = []  # For drill-down selector
+    activities_by_date = {}  # Store activities by date for drill-down
+    
     for activity in response_activities.get('activities', []):
         try:
             activity_date = datetime.strptime(activity['startTime'][:10], '%Y-%m-%d').strftime("%Y-%m-%d")
@@ -1096,6 +1122,12 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
                     'Steps': activity.get('steps', 'N/A'),
                     'Distance (mi)': round(activity.get('distance', 0) * 0.621371, 2) if activity.get('distance') else 'N/A'
                 })
+                
+                # Store for drill-down
+                if activity_date not in activities_by_date:
+                    activities_by_date[activity_date] = []
+                    workout_dates_for_dropdown.append({'label': f"{activity_date} - {activity_name}", 'value': activity_date})
+                activities_by_date[activity_date].append(activity)
         except:
             pass
     
@@ -1116,21 +1148,20 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
         exercise_df = pd.DataFrame()
         exercise_log_table = html.P("No exercise activities logged in this period.", style={'text-align': 'center', 'color': '#888'})
     
-    # Phase 3B: Sleep Quality Analysis
+    # Phase 3B: Sleep Quality Analysis - Use Fitbit's actual sleep score
     sleep_scores = []
     sleep_stages_totals = {'Deep': 0, 'Light': 0, 'REM': 0, 'Wake': 0}
+    sleep_dates_for_dropdown = []  # For drill-down selector
     
     for date_str in dates_str_list:
         if date_str in sleep_record_dict:
             sleep_data = sleep_record_dict[date_str]
-            # Calculate sleep score (0-100) based on duration and stages
-            total_sleep = sleep_data.get('total_sleep', 0)
-            deep_pct = (sleep_data.get('deep', 0) / total_sleep * 100) if total_sleep > 0 else 0
-            rem_pct = (sleep_data.get('rem', 0) / total_sleep * 100) if total_sleep > 0 else 0
             
-            # Simple sleep score formula
-            score = min(100, (total_sleep / 480 * 50) + (deep_pct * 0.3) + (rem_pct * 0.2))
-            sleep_scores.append({'Date': date_str, 'Score': round(score, 1)})
+            # Use Fitbit's actual sleep score (efficiency) if available
+            fitbit_score = sleep_data.get('sleep_score')
+            if fitbit_score is not None:
+                sleep_scores.append({'Date': date_str, 'Score': fitbit_score})
+                sleep_dates_for_dropdown.append({'label': date_str, 'value': date_str})
             
             # Accumulate stage totals for pie chart
             sleep_stages_totals['Deep'] += sleep_data.get('deep', 0)
@@ -1217,7 +1248,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
         fig_correlation = px.scatter(title='Exercise-Sleep Correlation (Insufficient Data)')
         correlation_insights = html.P("Need more data points for correlation analysis. Try a longer date range or log more workouts!")
     
-    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_spo2, spo2_summary_table, fig_sleep_minutes, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_filter_options, exercise_log_table, fig_sleep_score, fig_sleep_stages_pie, fig_correlation, correlation_insights, ""
+    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_spo2, spo2_summary_table, fig_sleep_minutes, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_filter_options, exercise_log_table, workout_dates_for_dropdown, fig_sleep_score, fig_sleep_stages_pie, sleep_dates_for_dropdown, fig_correlation, correlation_insights, ""
 
 if __name__ == '__main__':
     app.run_server(debug=True)
