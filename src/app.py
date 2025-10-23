@@ -785,8 +785,19 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
     for entry in response_cardio_fitness.get("cardioScore", []):
         try:
             cardio_fitness_list += [None]*(dates_str_list.index(entry["dateTime"])-len(cardio_fitness_list))
-            cardio_fitness_list.append(entry["value"]["vo2Max"])
-        except (KeyError, ValueError):
+            vo2max_value = entry["value"]["vo2Max"]
+            
+            # Handle range values (e.g., "42-46") by taking the midpoint
+            if isinstance(vo2max_value, str) and '-' in vo2max_value:
+                parts = vo2max_value.split('-')
+                if len(parts) == 2:
+                    try:
+                        vo2max_value = (float(parts[0]) + float(parts[1])) / 2
+                    except:
+                        vo2max_value = float(parts[0])  # Use first value if conversion fails
+            
+            cardio_fitness_list.append(float(vo2max_value) if vo2max_value else None)
+        except (KeyError, ValueError, TypeError):
             pass
     cardio_fitness_list += [None]*(len(dates_str_list)-len(cardio_fitness_list))
     
@@ -1010,15 +1021,22 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
     breathing_summary_df = calculate_table_data(df_merged, "Breathing Rate")
     breathing_summary_table = dash_table.DataTable(breathing_summary_df.to_dict('records'), [{"name": i, "id": i} for i in breathing_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#007a8c','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
     
-    # Cardio Fitness Score
-    cardio_fitness_avg = {'overall': round(df_merged["Cardio Fitness Score"].mean(),1), '30d': round(df_merged["Cardio Fitness Score"].tail(30).mean(),1)}
-    fig_cardio_fitness = px.line(df_merged, x="Date", y="Cardio Fitness Score", line_shape="spline", color_discrete_sequence=["#ff9500"], title=f"<b>Cardio Fitness Score (VO2 Max)<br><br><sup>Overall average : {cardio_fitness_avg['overall']} | Last 30d average : {cardio_fitness_avg['30d']}</sup></b><br><br><br>")
-    if df_merged["Cardio Fitness Score"].dtype != object and df_merged["Cardio Fitness Score"].notna().any():
-        fig_cardio_fitness.add_annotation(x=df_merged.iloc[df_merged["Cardio Fitness Score"].idxmax()]["Date"], y=df_merged["Cardio Fitness Score"].max(), text=str(df_merged["Cardio Fitness Score"].max()), showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
-        fig_cardio_fitness.add_annotation(x=df_merged.iloc[df_merged["Cardio Fitness Score"].idxmin()]["Date"], y=df_merged["Cardio Fitness Score"].min(), text=str(df_merged["Cardio Fitness Score"].min()), showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
-        fig_cardio_fitness.add_hline(y=df_merged["Cardio Fitness Score"].mean(), line_dash="dot",annotation_text="Average : " + str(round(df_merged["Cardio Fitness Score"].mean(), 1)), annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
-    cardio_fitness_summary_df = calculate_table_data(df_merged, "Cardio Fitness Score")
-    cardio_fitness_summary_table = dash_table.DataTable(cardio_fitness_summary_df.to_dict('records'), [{"name": i, "id": i} for i in cardio_fitness_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#995500','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
+    # Cardio Fitness Score with error handling
+    try:
+        # Convert to numeric, coercing errors to NaN
+        df_merged["Cardio Fitness Score"] = pd.to_numeric(df_merged["Cardio Fitness Score"], errors='coerce')
+        cardio_fitness_avg = {'overall': round(df_merged["Cardio Fitness Score"].mean(),1), '30d': round(df_merged["Cardio Fitness Score"].tail(30).mean(),1)}
+        fig_cardio_fitness = px.line(df_merged, x="Date", y="Cardio Fitness Score", line_shape="spline", color_discrete_sequence=["#ff9500"], title=f"<b>Cardio Fitness Score (VO2 Max)<br><br><sup>Overall average : {cardio_fitness_avg['overall']} | Last 30d average : {cardio_fitness_avg['30d']}</sup></b><br><br><br>")
+        if df_merged["Cardio Fitness Score"].notna().any():
+            fig_cardio_fitness.add_annotation(x=df_merged.iloc[df_merged["Cardio Fitness Score"].idxmax()]["Date"], y=df_merged["Cardio Fitness Score"].max(), text=str(round(df_merged["Cardio Fitness Score"].max(), 1)), showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
+            fig_cardio_fitness.add_annotation(x=df_merged.iloc[df_merged["Cardio Fitness Score"].idxmin()]["Date"], y=df_merged["Cardio Fitness Score"].min(), text=str(round(df_merged["Cardio Fitness Score"].min(), 1)), showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
+            fig_cardio_fitness.add_hline(y=df_merged["Cardio Fitness Score"].mean(), line_dash="dot",annotation_text="Average : " + str(round(df_merged["Cardio Fitness Score"].mean(), 1)), annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
+        cardio_fitness_summary_df = calculate_table_data(df_merged, "Cardio Fitness Score")
+        cardio_fitness_summary_table = dash_table.DataTable(cardio_fitness_summary_df.to_dict('records'), [{"name": i, "id": i} for i in cardio_fitness_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#995500','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
+    except Exception as e:
+        print(f"Error processing Cardio Fitness Score: {e}")
+        fig_cardio_fitness = px.line(title="Cardio Fitness Score (No Data)")
+        cardio_fitness_summary_table = html.P("No cardio fitness data available", style={'text-align': 'center', 'color': '#888'})
     
     # Temperature
     temperature_avg = {'overall': round(df_merged["Temperature"].mean(),2), '30d': round(df_merged["Temperature"].tail(30).mean(),2)}
