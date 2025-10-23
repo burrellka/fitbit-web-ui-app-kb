@@ -82,6 +82,16 @@ app.layout = html.Div(children=[
         end_date=datetime.today().date() - timedelta(days=1),
         start_date=datetime.today().date() - timedelta(days=365)
         ),
+        html.Div(style={'display': 'flex', 'flex-direction': 'column', 'align-items': 'flex-start', 'gap': '5px'}, children=[
+            dcc.Checklist(
+                id='advanced-metrics-toggle',
+                options=[{'label': ' Include Advanced Metrics (HRV, Breathing Rate, Temperature)', 'value': 'advanced'}],
+                value=[],  # Default: OFF
+                style={'font-size': '14px'}
+            ),
+            html.Div(id='advanced-metrics-warning', style={'font-size': '11px', 'color': '#ff6b6b', 'max-width': '400px', 'display': 'none'}, 
+                     children="⚠️ Advanced metrics require many API calls. Use shorter date ranges (30 days) to avoid rate limits (150 requests/hour).")
+        ]),
         html.Button(id='submit-button', type='submit', children='Submit', n_clicks=0, className="button-primary"),
         html.Button("Login to FitBit", id="login-button"),
     ]),
@@ -329,6 +339,12 @@ def update_login_button(oauth_token):
     else:
         return "Login to FitBit", False
 
+@app.callback(Output('advanced-metrics-warning', 'style'), Input('advanced-metrics-toggle', 'value'))
+def toggle_advanced_metrics_warning(value):
+    if 'advanced' in value:
+        return {'font-size': '11px', 'color': '#ff6b6b', 'max-width': '400px', 'display': 'block'}
+    return {'font-size': '11px', 'color': '#ff6b6b', 'max-width': '400px', 'display': 'none'}
+
 
 def seconds_to_tick_label(seconds):
     """Calculate the number of hours, minutes, and remaining seconds"""
@@ -454,9 +470,9 @@ def disable_button_and_calculate(n_clicks, oauth_token, refresh_token, token_exp
 # Fetch data and update graphs on click of submit
 @app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_sleep', 'figure'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise_log_table', 'children'), Output("loading-output-1", "children"),
 Input('submit-button', 'disabled'),
-State('my-date-picker-range', 'start_date'), State('my-date-picker-range', 'end_date'), State('oauth-token', 'data'),
+State('my-date-picker-range', 'start_date'), State('my-date-picker-range', 'end_date'), State('oauth-token', 'data'), State('advanced-metrics-toggle', 'value'),
 prevent_initial_call=True)
-def update_output(n_clicks, start_date, end_date, oauth_token):
+def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_enabled):
 
     start_date = datetime.fromisoformat(start_date).strftime("%Y-%m-%d")
     end_date = datetime.fromisoformat(end_date).strftime("%Y-%m-%d")
@@ -516,64 +532,71 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         return dash.no_update, dash.no_update, dash.no_update, px.line(), [], px.bar(), px.imshow([]), [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [], ""
     
     # New data endpoints - Parallel day-by-day fetching (range endpoints confirmed don't work)
+    # ONLY fetch if advanced metrics are enabled to avoid rate limiting
     
-    def fetch_hrv_day(date_str):
-        try:
-            hrv_day = requests.get(f"https://api.fitbit.com/1/user/-/hrv/date/{date_str}.json", headers=headers, timeout=10).json()
-            if "hrv" in hrv_day and len(hrv_day["hrv"]) > 0:
-                return {"dateTime": date_str, "value": hrv_day["hrv"][0]["value"]}
-        except:
-            pass
-        return None
-    
-    def fetch_breathing_day(date_str):
-        try:
-            br_day = requests.get(f"https://api.fitbit.com/1/user/-/br/date/{date_str}.json", headers=headers, timeout=10).json()
-            if "br" in br_day and len(br_day["br"]) > 0:
-                return {"dateTime": date_str, "value": br_day["br"][0]["value"]}
-        except:
-            pass
-        return None
-    
-    def fetch_temperature_day(date_str):
-        try:
-            temp_day = requests.get(f"https://api.fitbit.com/1/user/-/temp/skin/date/{date_str}.json", headers=headers, timeout=10).json()
-            if "tempSkin" in temp_day and len(temp_day["tempSkin"]) > 0:
-                return {"dateTime": date_str, "value": temp_day["tempSkin"][0]["value"]}
-        except:
-            pass
-        return None
-    
-    # Fetch HRV, Breathing, and Temperature in parallel
     response_hrv = {"hrv": []}
     response_breathing = {"br": []}
     response_temperature = {"tempSkin": []}
     
-    with ThreadPoolExecutor(max_workers=20) as executor:
-        # Submit all requests for all dates simultaneously
-        hrv_futures = {executor.submit(fetch_hrv_day, date): date for date in temp_dates_list}
-        br_futures = {executor.submit(fetch_breathing_day, date): date for date in temp_dates_list}
-        temp_futures = {executor.submit(fetch_temperature_day, date): date for date in temp_dates_list}
+    if advanced_metrics_enabled and 'advanced' in advanced_metrics_enabled:
+        print("🔬 Advanced metrics enabled - fetching HRV, Breathing Rate, and Temperature...")
+        print(f"⚠️ This will make ~{len(temp_dates_list) * 3} additional API calls")
         
-        # Collect results
-        for future in as_completed(hrv_futures):
-            result = future.result()
-            if result:
-                response_hrv["hrv"].append(result)
+        def fetch_hrv_day(date_str):
+            try:
+                hrv_day = requests.get(f"https://api.fitbit.com/1/user/-/hrv/date/{date_str}.json", headers=headers, timeout=10).json()
+                if "hrv" in hrv_day and len(hrv_day["hrv"]) > 0:
+                    return {"dateTime": date_str, "value": hrv_day["hrv"][0]["value"]}
+            except:
+                pass
+            return None
         
-        for future in as_completed(br_futures):
-            result = future.result()
-            if result:
-                response_breathing["br"].append(result)
+        def fetch_breathing_day(date_str):
+            try:
+                br_day = requests.get(f"https://api.fitbit.com/1/user/-/br/date/{date_str}.json", headers=headers, timeout=10).json()
+                if "br" in br_day and len(br_day["br"]) > 0:
+                    return {"dateTime": date_str, "value": br_day["br"][0]["value"]}
+            except:
+                pass
+            return None
         
-        for future in as_completed(temp_futures):
-            result = future.result()
-            if result:
-                response_temperature["tempSkin"].append(result)
-    
-    print(f"HRV: Fetched {len(response_hrv.get('hrv', []))} days")
-    print(f"Breathing: Fetched {len(response_breathing.get('br', []))} days")
-    print(f"Temperature: Fetched {len(response_temperature.get('tempSkin', []))} days")
+        def fetch_temperature_day(date_str):
+            try:
+                temp_day = requests.get(f"https://api.fitbit.com/1/user/-/temp/skin/date/{date_str}.json", headers=headers, timeout=10).json()
+                if "tempSkin" in temp_day and len(temp_day["tempSkin"]) > 0:
+                    return {"dateTime": date_str, "value": temp_day["tempSkin"][0]["value"]}
+            except:
+                pass
+            return None
+        
+        # Fetch HRV, Breathing, and Temperature in parallel
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            # Submit all requests for all dates simultaneously
+            hrv_futures = {executor.submit(fetch_hrv_day, date): date for date in temp_dates_list}
+            br_futures = {executor.submit(fetch_breathing_day, date): date for date in temp_dates_list}
+            temp_futures = {executor.submit(fetch_temperature_day, date): date for date in temp_dates_list}
+            
+            # Collect results
+            for future in as_completed(hrv_futures):
+                result = future.result()
+                if result:
+                    response_hrv["hrv"].append(result)
+            
+            for future in as_completed(br_futures):
+                result = future.result()
+                if result:
+                    response_breathing["br"].append(result)
+            
+            for future in as_completed(temp_futures):
+                result = future.result()
+                if result:
+                    response_temperature["tempSkin"].append(result)
+        
+        print(f"HRV: Fetched {len(response_hrv.get('hrv', []))} days")
+        print(f"Breathing: Fetched {len(response_breathing.get('br', []))} days")
+        print(f"Temperature: Fetched {len(response_temperature.get('tempSkin', []))} days")
+    else:
+        print("ℹ️ Advanced metrics disabled - skipping HRV, Breathing Rate, and Temperature to conserve API calls")
     
     # Cardio Fitness - Fetch in 30-day chunks (API limitation)
     response_cardio_fitness = {"cardioScore": []}
