@@ -261,7 +261,38 @@ app.layout = html.Div(children=[
         html.Div(style={"height": '40px'}),
         html.H4("Exercise Log 🏋️", style={'font-weight': 'bold'}),
         html.H6("Logged exercises and workouts tracked by your Fitbit device. Includes activity type, duration, calories burned, and average heart rate for each session."),
+        html.Div(style={'display': 'flex', 'gap': '20px', 'align-items': 'center', 'justify-content': 'center', 'margin': '20px'}, children=[
+            html.Label("Filter by Activity Type:", style={'font-weight': 'bold'}),
+            dcc.Dropdown(
+                id='exercise-type-filter',
+                options=[],  # Will be populated dynamically
+                value='All',
+                style={'min-width': '200px'}
+            ),
+        ]),
         html.Div(id='exercise_log_table', style={'max-width': '1200px', 'margin': 'auto', 'font-weight': 'bold'}, children=[]),
+        html.Div(style={"height": '20px'}),
+        html.Div(id='exercise-detail-section', style={'max-width': '1200px', 'margin': 'auto'}, children=[]),
+        html.Div(style={"height": '40px'}),
+        
+        html.H4("Sleep Quality Analysis 😴", style={'font-weight': 'bold'}),
+        html.H6("Comprehensive sleep metrics including sleep score, stage distribution, and consistency patterns."),
+        html.Div(style={'display': 'flex', 'flex-wrap': 'wrap', 'gap': '20px', 'justify-content': 'center'}, children=[
+            html.Div(style={'flex': '1', 'min-width': '400px'}, children=[
+                dcc.Graph(id='graph_sleep_score', figure=px.line(), config={'displaylogo': False}),
+            ]),
+            html.Div(style={'flex': '1', 'min-width': '400px'}, children=[
+                dcc.Graph(id='graph_sleep_stages_pie', figure=px.pie(), config={'displaylogo': False}),
+            ]),
+        ]),
+        html.Div(style={"height": '20px'}),
+        html.Div(id='sleep-detail-section', style={'max-width': '1200px', 'margin': 'auto'}, children=[]),
+        html.Div(style={"height": '40px'}),
+        
+        html.H4("Exercise ↔ Sleep Correlations 🔗", style={'font-weight': 'bold'}),
+        html.H6("Discover how your workouts impact your sleep quality and next-day recovery."),
+        dcc.Graph(id='graph_exercise_sleep_correlation', figure=px.scatter(), config={'displaylogo': False}),
+        html.Div(id='correlation_insights', style={'max-width': '1200px', 'margin': 'auto', 'padding': '20px', 'background-color': '#f8f9fa', 'border-radius': '10px'}, children=[]),
         html.Div(style={"height": '40px'}),
         html.Div(style={"height": '25px'}),
     ]),
@@ -344,6 +375,45 @@ def toggle_advanced_metrics_warning(value):
     if 'advanced' in value:
         return {'font-size': '11px', 'color': '#ff6b6b', 'max-width': '400px', 'display': 'block'}
     return {'font-size': '11px', 'color': '#ff6b6b', 'max-width': '400px', 'display': 'none'}
+
+# Store for exercise data
+exercise_data_store = {}
+
+@app.callback(
+    Output('exercise_log_table', 'children', allow_duplicate=True),
+    Input('exercise-type-filter', 'value'),
+    State('exercise_log_table', 'children'),
+    prevent_initial_call=True
+)
+def filter_exercise_log(selected_type, current_table):
+    """Filter exercise log by activity type"""
+    if not selected_type or selected_type == 'All' or not isinstance(current_table, dash_table.DataTable):
+        return dash.no_update
+    
+    # Get the full data from the table
+    try:
+        if isinstance(current_table, dash_table.DataTable):
+            full_data = current_table.data
+            if selected_type == 'All':
+                filtered_data = full_data
+            else:
+                filtered_data = [row for row in full_data if row.get('Activity') == selected_type]
+            
+            if filtered_data:
+                return dash_table.DataTable(
+                    filtered_data,
+                    [{"name": i, "id": i} for i in full_data[0].keys()],
+                    style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}],
+                    style_header={'backgroundColor': '#336699','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'},
+                    style_cell={'textAlign': 'center'},
+                    page_size=20
+                )
+            else:
+                return html.P(f"No {selected_type} activities in this period.", style={'text-align': 'center', 'color': '#888'})
+    except:
+        return dash.no_update
+    
+    return dash.no_update
 
 
 def seconds_to_tick_label(seconds):
@@ -468,7 +538,7 @@ def disable_button_and_calculate(n_clicks, oauth_token, refresh_token, token_exp
     return False, True, True
 
 # Fetch data and update graphs on click of submit
-@app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_sleep', 'figure'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise_log_table', 'children'), Output("loading-output-1", "children"),
+@app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_sleep', 'figure'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise-type-filter', 'options'), Output('exercise_log_table', 'children'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('graph_exercise_sleep_correlation', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
 Input('submit-button', 'disabled'),
 State('my-date-picker-range', 'start_date'), State('my-date-picker-range', 'end_date'), State('oauth-token', 'data'), State('advanced-metrics-toggle', 'value'),
 prevent_initial_call=True)
@@ -496,7 +566,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
                 # Return with error message
                 empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
                 empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
-                return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [], ""
+                return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), px.line(), px.pie(), px.scatter(), html.P("Rate limit exceeded"), ""
             else:
                 print(f"API Error: {user_profile['error']}")
                 
@@ -510,7 +580,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
                 print("Please wait at least 1 hour before generating another report.")
                 empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
                 empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
-                return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [], ""
+                return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), px.line(), px.pie(), px.scatter(), html.P("Rate limit exceeded"), ""
                 
         response_steps = requests.get("https://api.fitbit.com/1/user/-/activities/steps/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
         response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
@@ -520,7 +590,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
         # Return empty results if API calls fail with valid empty plots
         empty_fig = px.line(title="Error Fetching Data")
         empty_heatmap = px.imshow([[0]], title="No Data Available")
-        return dash.no_update, dash.no_update, dash.no_update, empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [], ""
+        return dash.no_update, dash.no_update, dash.no_update, empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Error fetching data"), px.line(), px.pie(), px.scatter(), html.P("Error fetching data"), ""
     
     # Build dates list early for parallel fetching
     temp_dates_list = []
@@ -529,7 +599,8 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
             temp_dates_list.append(entry['dateTime'])
     else:
         print(f"ERROR: No heart rate data in response: {response_heartrate}")
-        return dash.no_update, dash.no_update, dash.no_update, px.line(), [], px.bar(), px.imshow([]), [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [], ""
+        empty_heatmap = px.imshow([[0]], title="No Data Available")
+        return dash.no_update, dash.no_update, dash.no_update, px.line(), [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("No heart rate data"), px.line(), px.pie(), px.scatter(), html.P("No heart rate data"), ""
     
     # New data endpoints - Parallel day-by-day fetching (range endpoints confirmed don't work)
     # ONLY fetch if advanced metrics are enabled to avoid rate limiting
@@ -989,22 +1060,29 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
     floors_summary_df = calculate_table_data(df_merged, "Floors")
     floors_summary_table = dash_table.DataTable(floors_summary_df.to_dict('records'), [{"name": i, "id": i} for i in floors_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#663399','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
     
-    # Exercise Log
+    # Exercise Log with Enhanced Data
     exercise_data = []
+    activity_types = set(['All'])
     for activity in response_activities.get('activities', []):
         try:
             activity_date = datetime.strptime(activity['startTime'][:10], '%Y-%m-%d').strftime("%Y-%m-%d")
             if activity_date >= start_date and activity_date <= end_date:
+                activity_name = activity.get('activityName', 'N/A')
+                activity_types.add(activity_name)
                 exercise_data.append({
                     'Date': activity_date,
-                    'Activity': activity.get('activityName', 'N/A'),
+                    'Activity': activity_name,
                     'Duration (min)': activity.get('duration', 0) // 60000,
                     'Calories': activity.get('calories', 0),
                     'Avg HR': activity.get('averageHeartRate', 'N/A'),
-                    'Steps': activity.get('steps', 'N/A')
+                    'Steps': activity.get('steps', 'N/A'),
+                    'Distance (mi)': round(activity.get('distance', 0) * 0.621371, 2) if activity.get('distance') else 'N/A'
                 })
         except:
             pass
+    
+    # Exercise type filter options
+    exercise_filter_options = [{'label': activity_type, 'value': activity_type} for activity_type in sorted(activity_types)]
     
     if exercise_data:
         exercise_df = pd.DataFrame(exercise_data)
@@ -1017,9 +1095,111 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
             page_size=20
         )
     else:
+        exercise_df = pd.DataFrame()
         exercise_log_table = html.P("No exercise activities logged in this period.", style={'text-align': 'center', 'color': '#888'})
     
-    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_spo2, spo2_summary_table, fig_sleep_minutes, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_log_table, ""
+    # Phase 3B: Sleep Quality Analysis
+    sleep_scores = []
+    sleep_stages_totals = {'Deep': 0, 'Light': 0, 'REM': 0, 'Wake': 0}
+    
+    for date_str in dates_str_list:
+        if date_str in sleep_record_dict:
+            sleep_data = sleep_record_dict[date_str]
+            # Calculate sleep score (0-100) based on duration and stages
+            total_sleep = sleep_data.get('total_sleep', 0)
+            deep_pct = (sleep_data.get('deep', 0) / total_sleep * 100) if total_sleep > 0 else 0
+            rem_pct = (sleep_data.get('rem', 0) / total_sleep * 100) if total_sleep > 0 else 0
+            
+            # Simple sleep score formula
+            score = min(100, (total_sleep / 480 * 50) + (deep_pct * 0.3) + (rem_pct * 0.2))
+            sleep_scores.append({'Date': date_str, 'Score': round(score, 1)})
+            
+            # Accumulate stage totals for pie chart
+            sleep_stages_totals['Deep'] += sleep_data.get('deep', 0)
+            sleep_stages_totals['Light'] += sleep_data.get('light', 0)
+            sleep_stages_totals['REM'] += sleep_data.get('rem', 0)
+            sleep_stages_totals['Wake'] += sleep_data.get('wake', 0)
+    
+    # Sleep Score Chart
+    if sleep_scores:
+        sleep_score_df = pd.DataFrame(sleep_scores)
+        fig_sleep_score = px.line(sleep_score_df, x='Date', y='Score', 
+                                   title='Sleep Quality Score (0-100)',
+                                   markers=True)
+        fig_sleep_score.update_layout(yaxis_range=[0, 100])
+        fig_sleep_score.add_hline(y=75, line_dash="dot", line_color="green", 
+                                   annotation_text="Good Sleep", annotation_position="right")
+    else:
+        fig_sleep_score = px.line(title='Sleep Quality Score (No Data)')
+    
+    # Sleep Stages Pie Chart
+    if sum(sleep_stages_totals.values()) > 0:
+        stages_df = pd.DataFrame([{'Stage': k, 'Minutes': v} for k, v in sleep_stages_totals.items() if v > 0])
+        fig_sleep_stages_pie = px.pie(stages_df, values='Minutes', names='Stage',
+                                       title='Average Sleep Stage Distribution',
+                                       color='Stage',
+                                       color_discrete_map={'Deep': '#084466', 'Light': '#1e9ad6', 
+                                                          'REM': '#4cc5da', 'Wake': '#fd7676'})
+    else:
+        fig_sleep_stages_pie = px.pie(title='Sleep Stages (No Data)')
+    
+    # Phase 4: Exercise-Sleep Correlation
+    correlation_data = []
+    for i, date_str in enumerate(dates_str_list[:-1]):  # Skip last day
+        # Check if there was exercise on this day
+        exercise_calories = sum([ex['Calories'] for ex in exercise_data if ex['Date'] == date_str])
+        exercise_duration = sum([ex['Duration (min)'] for ex in exercise_data if ex['Date'] == date_str])
+        
+        # Get next day's sleep
+        next_date = dates_str_list[i + 1]
+        if next_date in sleep_record_dict:
+            sleep_data = sleep_record_dict[next_date]
+            correlation_data.append({
+                'Date': date_str,
+                'Exercise Calories': exercise_calories,
+                'Exercise Duration (min)': exercise_duration,
+                'Next Day Sleep (min)': sleep_data.get('total_sleep', 0),
+                'Deep Sleep %': (sleep_data.get('deep', 0) / sleep_data.get('total_sleep', 1) * 100) if sleep_data.get('total_sleep', 0) > 0 else 0
+            })
+    
+    if correlation_data and len(correlation_data) > 3:
+        corr_df = pd.DataFrame(correlation_data)
+        corr_df = corr_df[corr_df['Exercise Calories'] > 0]  # Only days with exercise
+        
+        if len(corr_df) > 0:
+            fig_correlation = px.scatter(corr_df, x='Exercise Calories', y='Next Day Sleep (min)',
+                                        size='Exercise Duration (min)', hover_data=['Date'],
+                                        title='Exercise Impact on Next Day Sleep',
+                                        trendline="ols")
+            fig_correlation.update_layout(xaxis_title="Exercise Calories Burned",
+                                         yaxis_title="Next Day Sleep Duration (min)")
+            
+            # Calculate correlation coefficient
+            if len(corr_df) >= 3:
+                corr_coef = corr_df['Exercise Calories'].corr(corr_df['Next Day Sleep (min)'])
+                avg_exercise_sleep = corr_df[corr_df['Exercise Calories'] > 100]['Next Day Sleep (min)'].mean()
+                avg_no_exercise_sleep = corr_df[corr_df['Exercise Calories'] <= 100]['Next Day Sleep (min)'].mean()
+                
+                correlation_insights = html.Div([
+                    html.H5("🔍 Insights:", style={'margin-bottom': '15px'}),
+                    html.P(f"📊 Correlation between exercise and next-day sleep: {corr_coef:.2f}" + 
+                          (" (Positive - More exercise correlates with better sleep!)" if corr_coef > 0.3 else 
+                           " (Negative - Heavy exercise may be affecting sleep)" if corr_coef < -0.3 else 
+                           " (Weak correlation)")),
+                    html.P(f"💪 Average sleep after workout days: {avg_exercise_sleep:.0f} minutes" if not pd.isna(avg_exercise_sleep) else ""),
+                    html.P(f"😴 Average sleep on rest days: {avg_no_exercise_sleep:.0f} minutes" if not pd.isna(avg_no_exercise_sleep) else ""),
+                    html.P(f"✨ Best practice: Your data suggests exercising in the {'morning/afternoon' if corr_coef > 0 else 'earlier hours'} for optimal sleep quality.")
+                ])
+            else:
+                correlation_insights = html.P("Need more exercise data for meaningful insights (minimum 3 workout days).")
+        else:
+            fig_correlation = px.scatter(title='Exercise-Sleep Correlation (No Exercise Data)')
+            correlation_insights = html.P("No exercise activities found in this period.")
+    else:
+        fig_correlation = px.scatter(title='Exercise-Sleep Correlation (Insufficient Data)')
+        correlation_insights = html.P("Need more data points for correlation analysis. Try a longer date range or log more workouts!")
+    
+    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_spo2, spo2_summary_table, fig_sleep_minutes, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_filter_options, exercise_log_table, fig_sleep_score, fig_sleep_stages_pie, fig_correlation, correlation_insights, ""
 
 if __name__ == '__main__':
     app.run_server(debug=True)
