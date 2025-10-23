@@ -30,7 +30,7 @@
 
 ## 🎉 Enhanced Features
 
-This fork includes the following enhancements:
+### Core Enhancements
 - ✅ **OAuth 2.0 Authentication** - No more manual token entry!
 - ✅ **Automatic Token Refresh** - Tokens refresh automatically before expiration
 - ✅ **Seamless Login Experience** - One-click Fitbit login
@@ -38,6 +38,25 @@ This fork includes the following enhancements:
 - ✅ **API Rate Limit Protection** - Smart API usage with optional advanced metrics
 - ✅ **Unit Conversions** - Automatic kg→lbs and km→miles conversions
 - ✅ **Graceful Error Handling** - Clear rate limit warnings and error messages
+
+### Advanced Analytics Features 🆕
+
+#### 🏋️ Exercise Analysis
+- **Exercise Log with Filtering** - Filter workouts by activity type (Running, Cycling, etc.)
+- **Enhanced Exercise Metrics** - Duration, calories, average HR, steps, and distance for each workout
+- **Activity Type Auto-Detection** - Automatically categorizes all logged exercises
+
+#### 😴 Sleep Quality Analysis
+- **Sleep Quality Score (0-100)** - Comprehensive sleep scoring based on duration and stage quality
+- **Sleep Stage Distribution** - Beautiful pie chart showing Deep, Light, REM, and Wake time percentages
+- **Sleep Consistency Tracking** - Monitor your sleep regularity over time
+
+#### 🔗 Exercise-Sleep Correlations
+- **AI-Powered Insights** - Discover how your workouts impact your sleep quality
+- **Correlation Analysis** - Statistical analysis showing relationship between exercise and next-day sleep
+- **Personalized Recommendations** - Smart suggestions for optimal workout timing
+- **Interactive Scatter Plots** - Visualize exercise intensity vs. sleep duration with trendlines
+- **Comparative Metrics** - See average sleep on workout days vs. rest days
 
 ## Try it out
 
