@@ -1,5 +1,33 @@
 # Fitbit Wellness Report Web UI - Enhanced Edition
 
+## 📊 Metrics Overview
+
+### Standard Metrics (Always Included)
+**API Cost: ~15 calls per report** - Well within Fitbit's 150 requests/hour limit
+
+- ❤️ **Heart Rate & Resting Heart Rate** - Daily and historical trends
+- 👟 **Steps** - Daily step count with heatmap visualization
+- ⚖️ **Weight** - Body weight tracking (with kg → lbs conversion)
+- 🫁 **SpO2 (Blood Oxygen)** - Oxygen saturation levels
+- 😴 **Sleep Analysis** - Sleep stages, duration, and regularity
+- 🏃 **Cardio Fitness Score (VO2 Max)** - Cardiovascular fitness
+- ⚡ **Active Zone Minutes** - Heart rate zone activity tracking
+- 🔥 **Calories Burned** - Daily energy expenditure
+- 📏 **Distance Traveled** - Daily distance (with km → miles conversion)
+- 🏢 **Floors Climbed** - Elevation gain tracking
+- 💪 **Exercise Log** - Detailed workout history with HR zones
+
+### Advanced Metrics (Optional - Checkbox Required)
+**API Cost: ~3 calls per day of data** (e.g., 79-day report = 237 additional calls ⚠️)
+
+- 💓 **Heart Rate Variability (HRV)** - Stress and recovery indicator
+- 🌬️ **Breathing Rate** - Respiratory rate during sleep
+- 🌡️ **Skin Temperature** - Temperature variation tracking
+
+> **⚠️ Important:** Advanced metrics require one API call per day, which can quickly exhaust Fitbit's 150 requests/hour limit. Keep them **OFF** by default and only enable for shorter date ranges (≤30 days) when needed.
+
+---
+
 ## 🎉 Enhanced Features
 
 This fork includes the following enhancements:
@@ -7,15 +35,9 @@ This fork includes the following enhancements:
 - ✅ **Automatic Token Refresh** - Tokens refresh automatically before expiration
 - ✅ **Seamless Login Experience** - One-click Fitbit login
 - ✅ **Session Management** - Secure token storage during your session
-- ✅ **Extended Data Visualizations** - Now includes:
-  - **Heart Rate Variability (HRV)** - Stress and recovery tracking
-  - **Breathing Rate** - Respiratory health monitoring
-  - **Cardio Fitness Score (VO2 Max)** - Cardiovascular fitness tracking
-  - **Temperature** - Skin temperature variation tracking
-  - **Active Zone Minutes** - Detailed activity zone tracking
-  - **Calories & Distance** - Daily energy expenditure and distance traveled
-  - **Floors Climbed** - Elevation gain tracking
-  - **Exercise Log** - Detailed workout and activity history
+- ✅ **API Rate Limit Protection** - Smart API usage with optional advanced metrics
+- ✅ **Unit Conversions** - Automatic kg→lbs and km→miles conversions
+- ✅ **Graceful Error Handling** - Clear rate limit warnings and error messages
 
 ## Try it out
 
