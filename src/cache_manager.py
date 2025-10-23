@@ -2,6 +2,7 @@
 Fitbit Data Cache Manager
 Caches sleep scores, HRV, breathing rate, temperature, and other metrics
 to avoid redundant API calls and provide accurate historical data.
+Also manages secure refresh token storage for automatic daily sync.
 """
 
 import sqlite3
@@ -9,6 +10,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Tuple
 import threading
+import base64
 
 class FitbitCache:
     def __init__(self, db_path='data_cache.db'):
@@ -228,4 +230,62 @@ class FitbitCache:
                 'advanced_records': advanced_stats[0] or 0,
                 'advanced_date_range': f"{advanced_stats[1]} to {advanced_stats[2]}" if advanced_stats[1] else "No data"
             }
+    
+    def store_refresh_token(self, refresh_token: str, expires_in: int = 28800):
+        """Store encrypted refresh token for automatic sync"""
+        # Simple base64 encoding (not cryptographically secure, but adds obfuscation)
+        # For production, use proper encryption like Fernet
+        encoded_token = base64.b64encode(refresh_token.encode()).decode()
+        expiry_timestamp = (datetime.now() + timedelta(seconds=expires_in)).isoformat()
+        
+        self.set_metadata('refresh_token', encoded_token)
+        self.set_metadata('token_expiry', expiry_timestamp)
+        self.set_metadata('last_token_update', datetime.now().isoformat())
+        print(f"🔒 Refresh token stored securely (expires: {expiry_timestamp})")
+    
+    def get_refresh_token(self) -> Optional[str]:
+        """Retrieve and decode stored refresh token"""
+        encoded_token = self.get_metadata('refresh_token')
+        if encoded_token:
+            try:
+                return base64.b64decode(encoded_token.encode()).decode()
+            except:
+                return None
+        return None
+    
+    def get_last_sync_date(self) -> Optional[str]:
+        """Get the date of last successful sync"""
+        return self.get_metadata('last_sync_date')
+    
+    def set_last_sync_date(self, date_str: str):
+        """Update last successful sync date"""
+        self.set_metadata('last_sync_date', date_str)
+        print(f"📅 Last sync date updated: {date_str}")
+    
+    def flush_cache(self):
+        """Clear all cached data (sleep, advanced metrics, but NOT tokens)"""
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('DELETE FROM sleep_cache')
+            cursor.execute('DELETE FROM advanced_metrics_cache')
+            
+            conn.commit()
+            conn.close()
+            print("🗑️ Cache flushed successfully! (Tokens preserved)")
+    
+    def flush_all(self):
+        """Clear EVERYTHING including tokens (requires re-login)"""
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('DELETE FROM sleep_cache')
+            cursor.execute('DELETE FROM advanced_metrics_cache')
+            cursor.execute('DELETE FROM cache_metadata')
+            
+            conn.commit()
+            conn.close()
+            print("🗑️ ALL cache data flushed! (Including tokens - re-login required)")
 

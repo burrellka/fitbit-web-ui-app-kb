@@ -30,6 +30,81 @@ cache = FitbitCache()
 # Background cache builder state
 cache_builder_running = False
 cache_builder_thread = None
+auto_sync_running = False
+auto_sync_thread = None
+
+def automatic_daily_sync():
+    """
+    Automatic daily sync thread that runs forever.
+    Checks every hour if new data needs to be fetched (yesterday's data).
+    Uses stored refresh token to get new access tokens automatically.
+    """
+    global auto_sync_running
+    auto_sync_running = True
+    print("🤖 Automatic daily sync thread started!")
+    
+    while True:
+        try:
+            time.sleep(3600)  # Check every hour
+            
+            # Get stored refresh token
+            refresh_token = cache.get_refresh_token()
+            if not refresh_token:
+                print("⚠️ Auto-sync: No refresh token stored, skipping sync")
+                continue
+            
+            # Check if we need to sync (last sync was yesterday or earlier)
+            last_sync = cache.get_last_sync_date()
+            yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+            
+            if last_sync and last_sync >= yesterday:
+                print(f"✅ Auto-sync: Already synced today (last: {last_sync})")
+                continue
+            
+            print(f"🔄 Auto-sync: Fetching data for {yesterday}...")
+            
+            # Refresh access token
+            client_id = os.environ['CLIENT_ID']
+            client_secret = os.environ['CLIENT_SECRET']
+            token_url = 'https://api.fitbit.com/oauth2/token'
+            
+            payload = {
+                'grant_type': 'refresh_token',
+                'refresh_token': refresh_token
+            }
+            
+            token_creds = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("utf-8")
+            token_headers = {
+                "Authorization": f"Basic {token_creds}",
+                "Content-Type": "application/x-www-form-urlencoded"
+            }
+            
+            token_response = requests.post(token_url, data=payload, headers=token_headers)
+            
+            if token_response.status_code == 200:
+                token_data = token_response.json()
+                new_access_token = token_data.get('access_token')
+                new_refresh_token = token_data.get('refresh_token')
+                
+                # Update stored refresh token
+                if new_refresh_token:
+                    cache.store_refresh_token(new_refresh_token, token_data.get('expires_in', 28800))
+                
+                # Fetch yesterday's data
+                headers = {"Authorization": f"Bearer {new_access_token}"}
+                fetched = populate_sleep_score_cache([yesterday], headers, force_refresh=True)
+                
+                if fetched > 0:
+                    cache.set_last_sync_date(yesterday)
+                    print(f"✅ Auto-sync: Successfully fetched data for {yesterday}")
+                else:
+                    print(f"⚠️ Auto-sync: No sleep data available for {yesterday}")
+            else:
+                print(f"❌ Auto-sync: Failed to refresh token (status: {token_response.status_code})")
+                
+        except Exception as e:
+            print(f"❌ Auto-sync error: {e}")
+            # Continue running despite errors
 
 def background_cache_builder(access_token: str):
     """
@@ -227,8 +302,16 @@ app.layout = html.Div(children=[
     html.Div(id="instruction-area", className="hidden-print", style={'margin-top':'30px', 'margin-right':'auto', 'margin-left':'auto','text-align':'center'}, children=[
         html.P("Select a date range to generate a report.", style={'font-size':'17px', 'font-weight': 'bold', 'color':'#54565e'}),
         html.Div(id="cache-status-display", style={'margin-top': '10px', 'padding': '10px', 'background-color': '#f0f8ff', 'border-radius': '5px', 'font-size': '14px'}),
+        html.Div(style={'margin-top': '10px'}, children=[
+            html.Button("🗑️ Flush Cache", id="flush-cache-button", n_clicks=0, style={
+                'background-color': '#ff6b6b', 'color': 'white', 'border': 'none', 'padding': '8px 16px',
+                'border-radius': '5px', 'cursor': 'pointer', 'font-size': '12px', 'margin-right': '10px'
+            }),
+            html.Span("Clear all cached data (preserves login)", style={'font-size': '11px', 'color': '#666'}),
+        ]),
     ]),
     dcc.Interval(id='cache-status-interval', interval=5000, n_intervals=0),  # Update every 5 seconds
+    dcc.ConfirmDialog(id='flush-confirm', message=''),
     html.Div(id='loading-div', style={'margin-top': '40px'}, children=[
     dcc.Loading(
             id="loading-progress",
@@ -441,6 +524,35 @@ app.layout = html.Div(children=[
         dcc.Graph(id='graph_exercise_sleep_correlation', figure=px.scatter(), config={'displaylogo': False}),
         html.Div(id='correlation_insights', style={'max-width': '1200px', 'margin': 'auto', 'padding': '20px', 'background-color': '#f8f9fa', 'border-radius': '10px'}, children=[]),
         html.Div(style={"height": '40px'}),
+        
+        # Documentation Footer
+        html.Div(className="hidden-print", style={'max-width': '1200px', 'margin': 'auto', 'padding': '30px', 'background-color': '#2c3e50', 'border-radius': '10px', 'margin-top': '40px'}, children=[
+            html.H4("📚 Documentation & Guides", style={'color': 'white', 'text-align': 'center', 'margin-bottom': '20px'}),
+            html.Div(style={'display': 'flex', 'flex-wrap': 'wrap', 'justify-content': 'center', 'gap': '15px'}, children=[
+                html.A("📖 README", href="https://github.com/burrellka/fitbit-web-ui-app-kb/blob/enhanced-features/README.md", target="_blank", 
+                       style={'padding': '10px 20px', 'background-color': '#3498db', 'color': 'white', 'text-decoration': 'none', 'border-radius': '5px', 'font-weight': 'bold'}),
+                html.A("🗄️ Cache System Guide", href="https://github.com/burrellka/fitbit-web-ui-app-kb/blob/enhanced-features/CACHE_SYSTEM_GUIDE.md", target="_blank",
+                       style={'padding': '10px 20px', 'background-color': '#9b59b6', 'color': 'white', 'text-decoration': 'none', 'border-radius': '5px', 'font-weight': 'bold'}),
+                html.A("🔌 API Documentation", href="https://github.com/burrellka/fitbit-web-ui-app-kb/blob/enhanced-features/API_DOCUMENTATION.md", target="_blank",
+                       style={'padding': '10px 20px', 'background-color': '#e74c3c', 'color': 'white', 'text-decoration': 'none', 'border-radius': '5px', 'font-weight': 'bold'}),
+                html.A("🚀 Enhancement Roadmap", href="https://github.com/burrellka/fitbit-web-ui-app-kb/blob/enhanced-features/ENHANCEMENT_ROADMAP.md", target="_blank",
+                       style={'padding': '10px 20px', 'background-color': '#16a085', 'color': 'white', 'text-decoration': 'none', 'border-radius': '5px', 'font-weight': 'bold'}),
+                html.A("🏠 Deployment Guide", href="https://github.com/burrellka/fitbit-web-ui-app-kb/blob/enhanced-features/DEPLOYMENT_GUIDE.md", target="_blank",
+                       style={'padding': '10px 20px', 'background-color': '#f39c12', 'color': 'white', 'text-decoration': 'none', 'border-radius': '5px', 'font-weight': 'bold'}),
+                html.A("🔑 Get Access Token", href="https://github.com/burrellka/fitbit-web-ui-app-kb/blob/enhanced-features/help/GET_ACCESS_TOKEN.md", target="_blank",
+                       style={'padding': '10px 20px', 'background-color': '#27ae60', 'color': 'white', 'text-decoration': 'none', 'border-radius': '5px', 'font-weight': 'bold'}),
+            ]),
+            html.Div(style={'text-align': 'center', 'margin-top': '20px', 'color': '#95a5a6', 'font-size': '12px'}, children=[
+                html.P("Fitbit Wellness Enhanced v2.0 | Intelligent Caching & Auto-Sync"),
+                html.P([
+                    "Built with ❤️ | ",
+                    html.A("View on GitHub", href="https://github.com/burrellka/fitbit-web-ui-app-kb", target="_blank", style={'color': '#3498db', 'text-decoration': 'none'}),
+                    " | ",
+                    html.A("Report Issues", href="https://github.com/burrellka/fitbit-web-ui-app-kb/issues", target="_blank", style={'color': '#e74c3c', 'text-decoration': 'none'})
+                ])
+            ])
+        ]),
+        
         html.Div(style={"height": '25px'}),
     ]),
 ])
@@ -502,6 +614,9 @@ def handle_oauth_callback(href):
         
         if access_token :
             print(f"✅ Access token received! Expires in {expires_in} seconds")
+            # Store refresh token securely for automatic daily sync
+            if refresh_token:
+                cache.store_refresh_token(refresh_token, expires_in)
             # Calculate expiry timestamp
             expiry_time = (datetime.now() + timedelta(seconds=expires_in)).timestamp()
             return access_token, refresh_token, expiry_time
@@ -514,7 +629,7 @@ def handle_oauth_callback(href):
 def update_login_button(oauth_token):
     if oauth_token:
         # Start background cache builder if not already running
-        global cache_builder_thread, cache_builder_running
+        global cache_builder_thread, cache_builder_running, auto_sync_thread, auto_sync_running
         if not cache_builder_running and (cache_builder_thread is None or not cache_builder_thread.is_alive()):
             print("🚀 Launching background cache builder...")
             cache_builder_thread = threading.Thread(
@@ -523,6 +638,15 @@ def update_login_button(oauth_token):
                 daemon=True
             )
             cache_builder_thread.start()
+        
+        # Start automatic daily sync if not already running
+        if not auto_sync_running and (auto_sync_thread is None or not auto_sync_thread.is_alive()):
+            print("🤖 Launching automatic daily sync...")
+            auto_sync_thread = threading.Thread(
+                target=automatic_daily_sync,
+                daemon=True
+            )
+            auto_sync_thread.start()
         
         return html.Span("Logged in"), True
     else:
@@ -559,6 +683,17 @@ def update_cache_status(n):
         ])
     except Exception as e:
         return html.Span(f"Cache status unavailable: {e}", style={'color': '#999'})
+
+@app.callback(Output('flush-confirm', 'displayed'), Output('flush-confirm', 'message'), Input('flush-cache-button', 'n_clicks'))
+def flush_cache_handler(n_clicks):
+    """Handle cache flush button click"""
+    if n_clicks and n_clicks > 0:
+        try:
+            cache.flush_cache()
+            return True, "✅ Cache flushed successfully! Your login is preserved. Generate a new report to rebuild cache."
+        except Exception as e:
+            return True, f"❌ Error flushing cache: {e}"
+    return False, ""
 
 # Store for exercise data
 exercise_data_store = {}
