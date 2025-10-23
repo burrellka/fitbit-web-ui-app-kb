@@ -1189,7 +1189,9 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
         fig_sleep_minutes.add_annotation(x=df_merged.iloc[df_merged["Total Sleep Minutes"].idxmax()]["Date"], y=df_merged["Total Sleep Minutes"].max(), text=str(format_minutes(df_merged["Total Sleep Minutes"].max())), showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
         fig_sleep_minutes.add_annotation(x=df_merged.iloc[df_merged["Total Sleep Minutes"].idxmin()]["Date"], y=df_merged["Total Sleep Minutes"].min(), text=str(format_minutes(df_merged["Total Sleep Minutes"].min())), showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
     fig_sleep_minutes.add_hline(y=df_merged["Total Sleep Minutes"].mean(), line_dash="dot",annotation_text="Average : " + str(format_minutes(int(df_merged["Total Sleep Minutes"].mean()))), annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
-    fig_sleep_minutes.update_xaxes(rangeslider_visible=True,range=[dates_str_list[-30], dates_str_list[-1]],rangeslider_range=[dates_str_list[0], dates_str_list[-1]])
+    # Set range slider - handle short date ranges
+    range_start = dates_str_list[max(-30, -len(dates_str_list))]
+    fig_sleep_minutes.update_xaxes(rangeslider_visible=True,range=[range_start, dates_str_list[-1]],rangeslider_range=[dates_str_list[0], dates_str_list[-1]])
     sleep_summary_df = calculate_table_data(df_merged, "Total Sleep Minutes")
     sleep_summary_table = dash_table.DataTable(sleep_summary_df.to_dict('records'), [{"name": i, "id": i} for i in sleep_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#636efa','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
     fig_sleep_regularity = px.bar(df_merged, x="Date", y="Total Sleep Seconds", base="Sleep Start Time Seconds", title="<b>Sleep Regularity<br><br><sup>The chart time here is always in local time ( Independent of timezone changes )</sup></b>", labels={"Total Sleep Seconds":"Time of Day ( HH:MM )"})
@@ -1358,6 +1360,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
         # Try cache first
         cached_sleep = cache.get_sleep_data(date_str)
         if cached_sleep and cached_sleep['sleep_score'] is not None:
+            print(f"📊 Using CACHED sleep score for {date_str}: {cached_sleep['sleep_score']}")
             sleep_scores.append({'Date': date_str, 'Score': cached_sleep['sleep_score']})
             sleep_dates_for_dropdown.append({'label': date_str, 'value': date_str})
             
@@ -1375,6 +1378,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
             sleep_data = sleep_record_dict[date_str]
             fitbit_score = sleep_data.get('sleep_score')
             if fitbit_score is not None:
+                print(f"⚠️ Using FALLBACK sleep score for {date_str}: {fitbit_score} (not in cache)")
                 sleep_scores.append({'Date': date_str, 'Score': fitbit_score})
                 sleep_dates_for_dropdown.append({'label': date_str, 'value': date_str})
             
@@ -1383,6 +1387,8 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
             sleep_stages_totals['Light'] += sleep_data.get('light', 0)
             sleep_stages_totals['REM'] += sleep_data.get('rem', 0)
             sleep_stages_totals['Wake'] += sleep_data.get('wake', 0)
+        else:
+            print(f"⚠️ No sleep data found for {date_str} (not in cache or sleep_record_dict)")
     
     # Sleep Score Chart
     if sleep_scores:
