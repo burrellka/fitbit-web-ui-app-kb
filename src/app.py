@@ -491,7 +491,7 @@ def handle_oauth_callback(href):
         print(f"Token response: {token_response.text}")
         
         try:
-        token_response_json = token_response.json()
+            token_response_json = token_response.json()
         except:
             print(f"ERROR: Could not parse token response as JSON")
             return dash.no_update, dash.no_update, dash.no_update
