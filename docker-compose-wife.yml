@@ -1,0 +1,22 @@
+# Docker Compose for Wife's Instance
+# Use this in a separate Dockge stack for your wife's dashboard
+# Same image, different credentials and port
+
+services:
+  fitbit-ui-wife:
+    image: brain40/fitbit-wellness-enhanced:latest
+    container_name: fitbit-report-app-wife
+    ports:
+      - "5033:80"  # Different port than yours (5032)
+    restart: unless-stopped
+    environment:
+      - CLIENT_ID=${CLIENT_ID_WIFE}      # Her Fitbit app credentials
+      - CLIENT_SECRET=${CLIENT_SECRET_WIFE}
+      - REDIRECT_URL=${REDIRECT_URL_WIFE}  # https://fitbitkcsb.yourdomain.com/
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+

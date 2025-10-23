@@ -1,0 +1,307 @@
+# Fitbit Wellness API Documentation
+
+## REST API Endpoints for MCP Server Integration
+
+This document describes the REST API endpoints available for integrating with MCP (Model Context Protocol) servers and other applications.
+
+---
+
+## Base URL
+
+When running locally or in Docker:
+```
+http://localhost:5032
+```
+
+When deployed with HTTPS:
+```
+https://your-domain.com
+```
+
+---
+
+## Endpoints
+
+### 1. Health Check
+
+**GET** `/api/health`
+
+Check if the API is running and healthy.
+
+**Response:**
+```json
+{
+  "success": true,
+  "status": "healthy",
+  "app": "Fitbit Wellness Enhanced",
+  "version": "2.0.0-cache"
+}
+```
+
+**Example:**
+```bash
+curl http://localhost:5032/api/health
+```
+
+---
+
+### 2. Cache Status
+
+**GET** `/api/cache/status`
+
+Get statistics about the current cache state.
+
+**Response:**
+```json
+{
+  "success": true,
+  "cache_stats": {
+    "sleep_records": 83,
+    "sleep_date_range": "2025-08-01 to 2025-10-22",
+    "advanced_records": 0,
+    "advanced_date_range": "No data"
+  },
+  "builder_running": false
+}
+```
+
+**Example:**
+```bash
+curl http://localhost:5032/api/cache/status
+```
+
+---
+
+### 3. Get Sleep Data
+
+**GET** `/api/data/sleep/<date>`
+
+Retrieve cached sleep data for a specific date.
+
+**Parameters:**
+- `date` (path): Date in YYYY-MM-DD format
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "date": "2025-10-22",
+  "data": {
+    "sleep_score": 79,
+    "efficiency": 92,
+    "total_sleep": 445,
+    "deep": 120,
+    "light": 230,
+    "rem": 95,
+    "wake": 25,
+    "start_time": "2025-10-22T23:30:00",
+    "sleep_data_json": "..."
+  }
+}
+```
+
+**Response (Not Found):**
+```json
+{
+  "success": false,
+  "message": "No sleep data found for 2025-10-22"
+}
+```
+
+**Example:**
+```bash
+curl http://localhost:5032/api/data/sleep/2025-10-22
+```
+
+---
+
+### 4. Get All Metrics
+
+**GET** `/api/data/metrics/<date>`
+
+Retrieve all cached metrics (sleep + advanced) for a specific date.
+
+**Parameters:**
+- `date` (path): Date in YYYY-MM-DD format
+
+**Response:**
+```json
+{
+  "success": true,
+  "date": "2025-10-22",
+  "sleep": {
+    "sleep_score": 79,
+    "efficiency": 92,
+    "total_sleep": 445,
+    ...
+  },
+  "advanced_metrics": {
+    "hrv": 45.2,
+    "breathing_rate": 14.5,
+    "temperature": 36.7
+  }
+}
+```
+
+**Example:**
+```bash
+curl http://localhost:5032/api/data/metrics/2025-10-22
+```
+
+---
+
+### 5. Refresh Cache for Date
+
+**POST** `/api/cache/refresh/<date>`
+
+Force refresh cached data for a specific date by fetching from Fitbit API.
+
+**Parameters:**
+- `date` (path): Date in YYYY-MM-DD format
+
+**Headers:**
+- `Authorization: Bearer <your_fitbit_access_token>`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Refreshed cache for 2025-10-22",
+  "records_updated": 1
+}
+```
+
+**Example:**
+```bash
+curl -X POST \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  http://localhost:5032/api/cache/refresh/2025-10-22
+```
+
+---
+
+### 6. Flush Cache (Not Yet Implemented)
+
+**POST** `/api/cache/flush`
+
+Clear the entire cache database.
+
+**Response:**
+```json
+{
+  "success": false,
+  "message": "Cache flush not yet implemented. Delete data_cache.db file to manually clear cache."
+}
+```
+
+**Manual Workaround:**
+```bash
+# Stop the container
+docker stop fitbit-report-app-enhanced
+
+# Delete the cache database
+rm ./data_cache.db
+
+# Restart the container
+docker start fitbit-report-app-enhanced
+```
+
+---
+
+## MCP Server Integration
+
+These endpoints are designed to be used with MCP (Model Context Protocol) servers, allowing LLMs to:
+
+1. **Query your fitness data** - Retrieve sleep, HRV, and other metrics
+2. **Monitor cache status** - Check what data is available
+3. **Refresh data** - Trigger updates for specific dates
+4. **Provide insights** - Analyze trends and patterns in your data
+
+### Example MCP Server Use Cases
+
+1. **Daily Health Summary:**
+   ```
+   GET /api/data/metrics/2025-10-22
+   ```
+   LLM analyzes sleep quality, HRV, and provides personalized recommendations
+
+2. **Trend Analysis:**
+   ```
+   GET /api/data/sleep/2025-10-15
+   GET /api/data/sleep/2025-10-16
+   GET /api/data/sleep/2025-10-17
+   ...
+   ```
+   LLM identifies patterns in sleep scores over time
+
+3. **Cache Management:**
+   ```
+   GET /api/cache/status
+   ```
+   LLM checks if data is available before querying
+
+---
+
+## Error Responses
+
+All endpoints return consistent error responses:
+
+```json
+{
+  "success": false,
+  "error": "Error message here"
+}
+```
+
+**Common HTTP Status Codes:**
+- `200` - Success
+- `401` - Unauthorized (missing/invalid token)
+- `404` - Resource not found
+- `500` - Internal server error
+- `501` - Not implemented
+
+---
+
+## Authentication
+
+Most read endpoints (GET) do not require authentication.
+
+Write/modify endpoints (POST) require a valid Fitbit OAuth access token:
+```
+Authorization: Bearer YOUR_ACCESS_TOKEN
+```
+
+You can obtain this token through the web UI login flow.
+
+---
+
+## Rate Limiting
+
+The API itself has no rate limits, but remember that:
+- The background cache builder respects Fitbit's API limits
+- Forced refresh operations consume Fitbit API quota
+- Cache hits are instant and don't consume API calls
+
+---
+
+## Future Enhancements
+
+Planned API additions:
+- ✅ GET `/api/data/sleep/<date>` - Implemented
+- ✅ GET `/api/data/metrics/<date>` - Implemented
+- ⏳ GET `/api/data/exercise/<date>` - Planned
+- ⏳ GET `/api/data/heartrate/<date>` - Planned
+- ⏳ POST `/api/cache/flush` - Planned
+- ⏳ GET `/api/insights/summary` - AI-generated insights
+- ⏳ GET `/api/trends/sleep` - Sleep trend analysis
+- ⏳ GET `/api/trends/fitness` - Fitness trend analysis
+
+---
+
+## Support
+
+For issues or questions:
+- Check the main [README.md](README.md)
+- Review [ENHANCEMENT_ROADMAP.md](ENHANCEMENT_ROADMAP.md)
+- Open an issue on GitHub
+

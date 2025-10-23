@@ -1,0 +1,26 @@
+# Production Docker Compose for Homelab
+# Use this in your TrueNAS/Dockge setup
+# Pulls pre-built image from Docker Hub
+
+services:
+  fitbit-ui-enhanced:
+    image: brain40/fitbit-wellness-enhanced:latest
+    container_name: fitbit-report-app-enhanced
+    ports:
+      - "5032:80"
+    restart: unless-stopped
+    environment:
+      - CLIENT_ID=${CLIENT_ID}
+      - CLIENT_SECRET=${CLIENT_SECRET}
+      - REDIRECT_URL=${REDIRECT_URL}
+    volumes:
+      # Persist cache database across container restarts
+      - ./data_cache.db:/app/data_cache.db
+    # Optional: Add health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+

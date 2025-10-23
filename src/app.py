@@ -14,6 +14,9 @@ from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from cache_manager import FitbitCache
+import threading
+import time
+from flask import jsonify, request
 
 
 # %%
@@ -24,10 +27,76 @@ log = logging.getLogger(__name__)
 print("🗄️ Initializing Fitbit data cache...")
 cache = FitbitCache()
 
-def populate_sleep_score_cache(dates_to_fetch: list, headers: dict):
+# Background cache builder state
+cache_builder_running = False
+cache_builder_thread = None
+
+def background_cache_builder(access_token: str):
+    """
+    Background thread to gradually build cache over time.
+    Fetches historical data without blocking the UI.
+    """
+    global cache_builder_running
+    
+    if not access_token:
+        print("⚠️ Background cache builder: No access token available")
+        return
+    
+    cache_builder_running = True
+    print("🚀 Starting background cache builder...")
+    
+    try:
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        # Calculate date range: last 90 days
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=90)
+        
+        # Check for missing dates
+        missing_dates = cache.get_missing_dates(
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d'),
+            metric_type='sleep'
+        )
+        
+        if not missing_dates:
+            print("✅ Background cache builder: No missing dates, cache is complete!")
+            cache_builder_running = False
+            return
+        
+        print(f"📋 Background cache builder: Found {len(missing_dates)} dates to cache")
+        
+        # Fetch in batches of 10 to be conservative with rate limits
+        batch_size = 10
+        for i in range(0, len(missing_dates), batch_size):
+            batch = missing_dates[i:i+batch_size]
+            print(f"📥 Background cache builder: Fetching batch {i//batch_size + 1} ({len(batch)} dates)...")
+            
+            fetched = populate_sleep_score_cache(batch, headers, force_refresh=False)
+            print(f"✅ Background cache builder: Cached {fetched} dates")
+            
+            # Sleep between batches to avoid rate limits (30 seconds)
+            if i + batch_size < len(missing_dates):
+                print("⏸️ Background cache builder: Waiting 30 seconds before next batch...")
+                import time
+                time.sleep(30)
+        
+        print("🎉 Background cache builder: Cache population complete!")
+        
+    except Exception as e:
+        print(f"❌ Background cache builder error: {e}")
+    finally:
+        cache_builder_running = False
+
+def populate_sleep_score_cache(dates_to_fetch: list, headers: dict, force_refresh: bool = False):
     """
     Fetch actual sleep scores from Fitbit API for missing dates and cache them.
     This uses the daily endpoint which includes the real sleep score.
+    
+    Args:
+        dates_to_fetch: List of dates to fetch
+        headers: API headers
+        force_refresh: If True, re-fetch even if already cached (useful for today's data)
     """
     fetched_count = 0
     for date_str in dates_to_fetch:
@@ -156,8 +225,10 @@ app.layout = html.Div(children=[
     dcc.Store(id="refresh-token", storage_type='session'),  # Store refresh token in session storage
     dcc.Store(id="token-expiry", storage_type='session'),  # Store token expiry time
     html.Div(id="instruction-area", className="hidden-print", style={'margin-top':'30px', 'margin-right':'auto', 'margin-left':'auto','text-align':'center'}, children=[
-        html.P( "Select a date range to generate a report.", style={'font-size':'17px', 'font-weight': 'bold', 'color':'#54565e'}),
-        ]),
+        html.P("Select a date range to generate a report.", style={'font-size':'17px', 'font-weight': 'bold', 'color':'#54565e'}),
+        html.Div(id="cache-status-display", style={'margin-top': '10px', 'padding': '10px', 'background-color': '#f0f8ff', 'border-radius': '5px', 'font-size': '14px'}),
+    ]),
+    dcc.Interval(id='cache-status-interval', interval=5000, n_intervals=0),  # Update every 5 seconds
     html.Div(id='loading-div', style={'margin-top': '40px'}, children=[
     dcc.Loading(
             id="loading-progress",
@@ -442,6 +513,17 @@ def handle_oauth_callback(href):
 @app.callback(Output('login-button', 'children'),Output('login-button', 'disabled'),Input('oauth-token', 'data'))
 def update_login_button(oauth_token):
     if oauth_token:
+        # Start background cache builder if not already running
+        global cache_builder_thread, cache_builder_running
+        if not cache_builder_running and (cache_builder_thread is None or not cache_builder_thread.is_alive()):
+            print("🚀 Launching background cache builder...")
+            cache_builder_thread = threading.Thread(
+                target=background_cache_builder, 
+                args=(oauth_token,),
+                daemon=True
+            )
+            cache_builder_thread.start()
+        
         return html.Span("Logged in"), True
     else:
         return "Login to FitBit", False
@@ -451,6 +533,32 @@ def toggle_advanced_metrics_warning(value):
     if 'advanced' in value:
         return {'font-size': '11px', 'color': '#ff6b6b', 'max-width': '400px', 'display': 'block'}
     return {'font-size': '11px', 'color': '#ff6b6b', 'max-width': '400px', 'display': 'none'}
+
+@app.callback(Output('cache-status-display', 'children'), Input('cache-status-interval', 'n_intervals'))
+def update_cache_status(n):
+    """Display current cache status"""
+    try:
+        stats = cache.get_cache_stats()
+        
+        if stats['sleep_records'] == 0:
+            status_emoji = "⏳"
+            status_text = "Cache Empty - Will auto-populate on first report"
+            color = "#ff9800"
+        elif stats['sleep_records'] < 30:
+            status_emoji = "🔄"
+            status_text = f"Building Cache: {stats['sleep_records']} days cached"
+            color = "#2196f3"
+        else:
+            status_emoji = "✅"
+            status_text = f"Cache Ready: {stats['sleep_records']} days | {stats['sleep_date_range']}"
+            color = "#4caf50"
+        
+        return html.Div([
+            html.Span(status_emoji, style={'font-size': '18px', 'margin-right': '8px'}),
+            html.Span(status_text, style={'color': color, 'font-weight': 'bold'})
+        ])
+    except Exception as e:
+        return html.Span(f"Cache status unavailable: {e}", style={'color': '#999'})
 
 # Store for exercise data
 exercise_data_store = {}
@@ -1217,8 +1325,17 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
     # Phase 3B: Sleep Quality Analysis - Use cached Fitbit sleep scores
     print("🗄️ Checking cache for sleep scores...")
     
+    # Always refresh today's data (most recent)
+    today = datetime.now().strftime('%Y-%m-%d')
+    if today in dates_str_list:
+        print(f"🔄 Refreshing today's data ({today})...")
+        populate_sleep_score_cache([today], headers, force_refresh=True)
+    
     # Check which dates are missing from cache
     missing_dates = cache.get_missing_dates(start_date, end_date, metric_type='sleep')
+    
+    # Remove today from missing dates since we already refreshed it
+    missing_dates = [d for d in missing_dates if d != today]
     
     if missing_dates:
         # Limit to 30 dates at a time to avoid rate limits
@@ -1230,7 +1347,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
         if len(missing_dates) > 30:
             print(f"ℹ️ {len(missing_dates) - 30} older dates will be fetched in future reports")
     else:
-        print("✅ All sleep scores already cached!")
+        print("✅ All historical sleep scores already cached!")
     
     # Now build sleep scores from cache
     sleep_scores = []
@@ -1347,6 +1464,103 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
         correlation_insights = html.P("Need more data points for correlation analysis. Try a longer date range or log more workouts!")
     
     return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_spo2, spo2_summary_table, fig_sleep_minutes, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_filter_options, exercise_log_table, workout_dates_for_dropdown, fig_sleep_score, fig_sleep_stages_pie, sleep_dates_for_dropdown, fig_correlation, correlation_insights, ""
+
+# ========================================
+# REST API Endpoints for MCP Server Integration
+# ========================================
+
+@server.route('/api/cache/status', methods=['GET'])
+def api_cache_status():
+    """Get cache statistics"""
+    try:
+        stats = cache.get_cache_stats()
+        return jsonify({
+            'success': True,
+            'cache_stats': stats,
+            'builder_running': cache_builder_running
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@server.route('/api/cache/flush', methods=['POST'])
+def api_cache_flush():
+    """Flush/clear the entire cache"""
+    try:
+        # This would require adding a flush method to FitbitCache
+        # For now, return a placeholder
+        return jsonify({
+            'success': False,
+            'message': 'Cache flush not yet implemented. Delete data_cache.db file to manually clear cache.'
+        }), 501
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@server.route('/api/cache/refresh/<date>', methods=['POST'])
+def api_cache_refresh(date):
+    """Force refresh cache for a specific date"""
+    try:
+        # This would require passing token from request headers
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'success': False, 'error': 'Missing or invalid Authorization header'}), 401
+        
+        token = auth_header.replace('Bearer ', '')
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        fetched = populate_sleep_score_cache([date], headers, force_refresh=True)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Refreshed cache for {date}',
+            'records_updated': fetched
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@server.route('/api/data/sleep/<date>', methods=['GET'])
+def api_get_sleep_data(date):
+    """Get sleep data for a specific date from cache"""
+    try:
+        sleep_data = cache.get_sleep_data(date)
+        if sleep_data:
+            return jsonify({
+                'success': True,
+                'date': date,
+                'data': sleep_data
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': f'No sleep data found for {date}'
+            }), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@server.route('/api/data/metrics/<date>', methods=['GET'])
+def api_get_metrics(date):
+    """Get all cached metrics for a specific date"""
+    try:
+        sleep_data = cache.get_sleep_data(date)
+        advanced_metrics = cache.get_advanced_metrics(date)
+        
+        return jsonify({
+            'success': True,
+            'date': date,
+            'sleep': sleep_data,
+            'advanced_metrics': advanced_metrics
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@server.route('/api/health', methods=['GET'])
+def api_health():
+    """Health check endpoint"""
+    return jsonify({
+        'success': True,
+        'status': 'healthy',
+        'app': 'Fitbit Wellness Enhanced',
+        'version': '2.0.0-cache'
+    })
 
 if __name__ == '__main__':
     app.run_server(debug=True)
