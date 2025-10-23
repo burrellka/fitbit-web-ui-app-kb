@@ -900,6 +900,16 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
                     else:
                         sleep_start_time = sleep_start_time + timedelta(hours=-12)
                     sleep_time_of_day = sleep_start_time.time()
+                    # Get the actual sleep score - it's nested in a sleepScore object
+                    sleep_score = None
+                    if 'sleepScore' in sleep_record and isinstance(sleep_record['sleepScore'], dict):
+                        sleep_score = sleep_record['sleepScore'].get('overall', None)
+                        print(f"Sleep score for {sleep_record['dateOfSleep']}: {sleep_score} (from sleepScore.overall)")
+                    elif 'efficiency' in sleep_record:
+                        # Fallback to efficiency if no sleep score available
+                        sleep_score = sleep_record['efficiency']
+                        print(f"Sleep score for {sleep_record['dateOfSleep']}: {sleep_score} (from efficiency - no sleepScore available)")
+                    
                     sleep_record_dict[sleep_record['dateOfSleep']] = {
                         'deep': sleep_record['levels']['summary']['deep']['minutes'],
                         'light': sleep_record['levels']['summary']['light']['minutes'],
@@ -907,7 +917,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
                         'wake': sleep_record['levels']['summary']['wake']['minutes'],
                         'total_sleep': sleep_record["minutesAsleep"],
                         'start_time_seconds': (sleep_time_of_day.hour * 3600) + (sleep_time_of_day.minute * 60) + sleep_time_of_day.second,
-                        'sleep_score': sleep_record.get('efficiency', None),  # Fitbit's actual sleep score
+                        'sleep_score': sleep_score,  # Fitbit's actual sleep score from sleepScore.overall
                         'sleep_record': sleep_record  # Store full record for drill-down
                     }
                 except KeyError as E:
