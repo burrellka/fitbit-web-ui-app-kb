@@ -739,7 +739,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
     # Collecting data-----------------------------------------------------------------------------------------------------------------------
     
     try:
-    user_profile = requests.get("https://api.fitbit.com/1/user/-/profile.json", headers=headers).json()
+        user_profile = requests.get("https://api.fitbit.com/1/user/-/profile.json", headers=headers).json()
         
         # Check for rate limiting or errors
         if 'error' in user_profile:
@@ -754,7 +754,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
             else:
                 print(f"API Error: {user_profile['error']}")
                 
-    response_heartrate = requests.get("https://api.fitbit.com/1/user/-/activities/heart/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        response_heartrate = requests.get("https://api.fitbit.com/1/user/-/activities/heart/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
         
         # Check for rate limiting in heart rate response
         if 'error' in response_heartrate:
@@ -766,9 +766,9 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
                 empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
                 return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), px.line(), px.pie(), px.scatter(), html.P("Rate limit exceeded"), ""
                 
-    response_steps = requests.get("https://api.fitbit.com/1/user/-/activities/steps/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    response_spo2 = requests.get("https://api.fitbit.com/1/user/-/spo2/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        response_steps = requests.get("https://api.fitbit.com/1/user/-/activities/steps/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        response_spo2 = requests.get("https://api.fitbit.com/1/user/-/spo2/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
     except Exception as e:
         print(f"ERROR fetching initial data: {e}")
         # Return empty results if API calls fail with valid empty plots
