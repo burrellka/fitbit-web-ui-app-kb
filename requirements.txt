@@ -5,3 +5,4 @@ plotly==5.15.0
 requests==2.29.0
 gunicorn
 dash-tools
+statsmodels==0.14.0
