@@ -13,11 +13,67 @@ import plotly.express as px
 from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from cache_manager import FitbitCache
 
 
 # %%
 
 log = logging.getLogger(__name__)
+
+# Initialize cache
+print("🗄️ Initializing Fitbit data cache...")
+cache = FitbitCache()
+
+def populate_sleep_score_cache(dates_to_fetch: list, headers: dict):
+    """
+    Fetch actual sleep scores from Fitbit API for missing dates and cache them.
+    This uses the daily endpoint which includes the real sleep score.
+    """
+    fetched_count = 0
+    for date_str in dates_to_fetch:
+        try:
+            # Fetch individual day's sleep data (includes sleepScore)
+            response = requests.get(
+                f"https://api.fitbit.com/1.2/user/-/sleep/date/{date_str}.json",
+                headers=headers,
+                timeout=10
+            ).json()
+            
+            if 'sleep' in response and len(response['sleep']) > 0:
+                for sleep_record in response['sleep']:
+                    if sleep_record.get('isMainSleep', True):
+                        # Extract sleep score
+                        sleep_score = None
+                        if 'sleepScore' in sleep_record and isinstance(sleep_record['sleepScore'], dict):
+                            sleep_score = sleep_record['sleepScore'].get('overall')
+                        
+                        # Fallback to efficiency if no sleep score
+                        if sleep_score is None and 'efficiency' in sleep_record:
+                            sleep_score = sleep_record['efficiency']
+                        
+                        if sleep_score is not None:
+                            # Cache the sleep score and related data
+                            cache.set_sleep_score(
+                                date=date_str,
+                                sleep_score=sleep_score,
+                                efficiency=sleep_record.get('efficiency'),
+                                total_sleep=sleep_record.get('minutesAsleep'),
+                                deep=sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes'),
+                                light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
+                                rem=sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes'),
+                                wake=sleep_record.get('levels', {}).get('summary', {}).get('wake', {}).get('minutes'),
+                                start_time=sleep_record.get('startTime'),
+                                sleep_data_json=str(sleep_record)
+                            )
+                            fetched_count += 1
+                            print(f"✅ Cached sleep score for {date_str}: {sleep_score}")
+                        break  # Only process main sleep
+        except Exception as e:
+            print(f"⚠️ Error fetching sleep score for {date_str}: {e}")
+            continue
+    
+    return fetched_count
+
 for variable in ['CLIENT_ID','CLIENT_SECRET','REDIRECT_URL'] :
     if variable not in os.environ.keys() :
         log.error(f'Missing required environment variable \'{variable}\', please review the README')
@@ -364,7 +420,7 @@ def handle_oauth_callback(href):
         print(f"Token response: {token_response.text}")
         
         try:
-            token_response_json = token_response.json()
+        token_response_json = token_response.json()
         except:
             print(f"ERROR: Could not parse token response as JSON")
             return dash.no_update, dash.no_update, dash.no_update
@@ -575,7 +631,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
     # Collecting data-----------------------------------------------------------------------------------------------------------------------
     
     try:
-        user_profile = requests.get("https://api.fitbit.com/1/user/-/profile.json", headers=headers).json()
+    user_profile = requests.get("https://api.fitbit.com/1/user/-/profile.json", headers=headers).json()
         
         # Check for rate limiting or errors
         if 'error' in user_profile:
@@ -590,7 +646,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
             else:
                 print(f"API Error: {user_profile['error']}")
                 
-        response_heartrate = requests.get("https://api.fitbit.com/1/user/-/activities/heart/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+    response_heartrate = requests.get("https://api.fitbit.com/1/user/-/activities/heart/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
         
         # Check for rate limiting in heart rate response
         if 'error' in response_heartrate:
@@ -602,9 +658,9 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
                 empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
                 return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), px.line(), px.pie(), px.scatter(), html.P("Rate limit exceeded"), ""
                 
-        response_steps = requests.get("https://api.fitbit.com/1/user/-/activities/steps/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-        response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-        response_spo2 = requests.get("https://api.fitbit.com/1/user/-/spo2/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+    response_steps = requests.get("https://api.fitbit.com/1/user/-/activities/steps/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+    response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+    response_spo2 = requests.get("https://api.fitbit.com/1/user/-/spo2/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
     except Exception as e:
         print(f"ERROR fetching initial data: {e}")
         # Return empty results if API calls fail with valid empty plots
@@ -890,7 +946,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
         if "sleep" not in response_sleep:
             print(f"Sleep API returned unexpected response: {response_sleep}")
             continue
-        
+
         for sleep_record in response_sleep["sleep"][::-1]:
             if sleep_record['isMainSleep']:
                 try:
@@ -912,14 +968,14 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
                     
                     sleep_record_dict[sleep_record['dateOfSleep']] = {
                         'deep': sleep_record['levels']['summary']['deep']['minutes'],
-                        'light': sleep_record['levels']['summary']['light']['minutes'],
-                        'rem': sleep_record['levels']['summary']['rem']['minutes'],
-                        'wake': sleep_record['levels']['summary']['wake']['minutes'],
-                        'total_sleep': sleep_record["minutesAsleep"],
+                                                                    'light': sleep_record['levels']['summary']['light']['minutes'],
+                                                                    'rem': sleep_record['levels']['summary']['rem']['minutes'],
+                                                                    'wake': sleep_record['levels']['summary']['wake']['minutes'],
+                                                                    'total_sleep': sleep_record["minutesAsleep"],
                         'start_time_seconds': (sleep_time_of_day.hour * 3600) + (sleep_time_of_day.minute * 60) + sleep_time_of_day.second,
                         'sleep_score': sleep_score,  # Fitbit's actual sleep score from sleepScore.overall
                         'sleep_record': sleep_record  # Store full record for drill-down
-                    }
+                                                                    }
                 except KeyError as E:
                     pass
 
@@ -1158,16 +1214,48 @@ def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_
         exercise_df = pd.DataFrame()
         exercise_log_table = html.P("No exercise activities logged in this period.", style={'text-align': 'center', 'color': '#888'})
     
-    # Phase 3B: Sleep Quality Analysis - Use Fitbit's actual sleep score
+    # Phase 3B: Sleep Quality Analysis - Use cached Fitbit sleep scores
+    print("🗄️ Checking cache for sleep scores...")
+    
+    # Check which dates are missing from cache
+    missing_dates = cache.get_missing_dates(start_date, end_date, metric_type='sleep')
+    
+    if missing_dates:
+        # Limit to 30 dates at a time to avoid rate limits
+        dates_to_fetch = missing_dates[:30]  # Start with last 30 days
+        print(f"📥 Fetching {len(dates_to_fetch)} missing sleep scores from API...")
+        fetched = populate_sleep_score_cache(dates_to_fetch, headers)
+        print(f"✅ Successfully cached {fetched} new sleep scores")
+        
+        if len(missing_dates) > 30:
+            print(f"ℹ️ {len(missing_dates) - 30} older dates will be fetched in future reports")
+    else:
+        print("✅ All sleep scores already cached!")
+    
+    # Now build sleep scores from cache
     sleep_scores = []
     sleep_stages_totals = {'Deep': 0, 'Light': 0, 'REM': 0, 'Wake': 0}
     sleep_dates_for_dropdown = []  # For drill-down selector
     
     for date_str in dates_str_list:
-        if date_str in sleep_record_dict:
-            sleep_data = sleep_record_dict[date_str]
+        # Try cache first
+        cached_sleep = cache.get_sleep_data(date_str)
+        if cached_sleep and cached_sleep['sleep_score'] is not None:
+            sleep_scores.append({'Date': date_str, 'Score': cached_sleep['sleep_score']})
+            sleep_dates_for_dropdown.append({'label': date_str, 'value': date_str})
             
-            # Use Fitbit's actual sleep score (efficiency) if available
+            # Use cached sleep stage data if available
+            if cached_sleep['deep']:
+                sleep_stages_totals['Deep'] += cached_sleep['deep']
+            if cached_sleep['light']:
+                sleep_stages_totals['Light'] += cached_sleep['light']
+            if cached_sleep['rem']:
+                sleep_stages_totals['REM'] += cached_sleep['rem']
+            if cached_sleep['wake']:
+                sleep_stages_totals['Wake'] += cached_sleep['wake']
+        elif date_str in sleep_record_dict:
+            # Fallback to sleep_record_dict if not in cache yet
+            sleep_data = sleep_record_dict[date_str]
             fitbit_score = sleep_data.get('sleep_score')
             if fitbit_score is not None:
                 sleep_scores.append({'Date': date_str, 'Score': fitbit_score})
