@@ -12,6 +12,7 @@ import numpy as np
 import plotly.express as px
 from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 # %%
@@ -272,30 +273,49 @@ def handle_oauth_callback(href):
         query_params = parse_qs(parsed_url.query)
         oauth_code = query_params.get('code', [None])[0]
         if oauth_code :
-            print(f"OAuth code received")
+            print(f"OAuth code received: {oauth_code[:20]}...")
         else :
             print("No OAuth code found in URL.")
             return dash.no_update, dash.no_update, dash.no_update
         # Exchange code for a token
         client_id = os.environ['CLIENT_ID']
-        client_isecret = os.environ['CLIENT_SECRET']
+        client_secret = os.environ['CLIENT_SECRET']
         redirect_uri = os.environ['REDIRECT_URL']
-        token_url='https://api.fitbit.com/oauth2/token?'
-        payload = {'code': oauth_code, 'grant_type': 'authorization_code', 'client_id': client_id, 'redirect_uri': redirect_uri}
-        token_creds = base64.b64encode(f"{client_id}:{client_isecret}".encode("utf-8")).decode("utf-8")
-        token_headers = {"Authorization": f"Basic {token_creds}"}
+        token_url='https://api.fitbit.com/oauth2/token'
+        payload = {
+            'code': oauth_code, 
+            'grant_type': 'authorization_code', 
+            'client_id': client_id, 
+            'redirect_uri': redirect_uri
+        }
+        token_creds = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("utf-8")
+        token_headers = {
+            "Authorization": f"Basic {token_creds}",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+        print(f"Requesting token with redirect_uri: {redirect_uri}")
         token_response = requests.post(token_url, data=payload, headers=token_headers)
-        token_response_json = token_response.json()
+        print(f"Token response status: {token_response.status_code}")
+        print(f"Token response: {token_response.text}")
+        
+        try:
+            token_response_json = token_response.json()
+        except:
+            print(f"ERROR: Could not parse token response as JSON")
+            return dash.no_update, dash.no_update, dash.no_update
+            
         access_token = token_response_json.get('access_token')
         refresh_token = token_response_json.get('refresh_token')
         expires_in = token_response_json.get('expires_in', 28800)  # Default 8 hours
+        
         if access_token :
-            print(f"Access token received!")
+            print(f"✅ Access token received! Expires in {expires_in} seconds")
             # Calculate expiry timestamp
             expiry_time = (datetime.now() + timedelta(seconds=expires_in)).timestamp()
             return access_token, refresh_token, expiry_time
         else :
-            print("No access token found in response.")
+            errors = token_response_json.get('errors', token_response_json.get('error', 'Unknown error'))
+            print(f"❌ No access token found in response. Errors: {errors}")
     return dash.no_update, dash.no_update, dash.no_update
 
 @app.callback(Output('login-button', 'children'),Output('login-button', 'disabled'),Input('oauth-token', 'data'))
@@ -386,29 +406,22 @@ def set_max_date_allowed(start_date):
     max_end_date = min((start + timedelta(days=365)).date(), current_date)
     return max_end_date, max_end_date
 
-# Check and refresh token if needed before data fetch
-@app.callback(Output('oauth-token', 'data', allow_duplicate=True), Output('refresh-token', 'data', allow_duplicate=True), Output('token-expiry', 'data', allow_duplicate=True), Input('submit-button', 'n_clicks'), State('oauth-token', 'data'), State('refresh-token', 'data'), State('token-expiry', 'data'), prevent_initial_call=True)
-def check_and_refresh_token(n_clicks, access_token, refresh_token, token_expiry):
-    """Check if token is expired and refresh if needed"""
-    if not access_token or not refresh_token or not token_expiry:
-        return dash.no_update, dash.no_update, dash.no_update
-    
-    # Check if token is expired or will expire in the next 5 minutes
-    current_time = datetime.now().timestamp()
-    if current_time >= (token_expiry - 300):  # Refresh 5 minutes before expiry
-        print("Token expired or expiring soon, refreshing...")
-        new_access, new_refresh, new_expiry = refresh_access_token(refresh_token)
-        if new_access:
-            return new_access, new_refresh, new_expiry
-        else:
-            print("Failed to refresh token, using existing token")
-    return dash.no_update, dash.no_update, dash.no_update
-
 # Disables the button after click and starts calculations
-@app.callback(Output('errordialog', 'displayed'), Output('submit-button', 'disabled'), Output('my-date-picker-range', 'disabled'), Input('submit-button', 'n_clicks'),State('oauth-token', 'data'),prevent_initial_call=True)
-def disable_button_and_calculate(n_clicks, oauth_token):
+@app.callback(Output('errordialog', 'displayed'), Output('submit-button', 'disabled'), Output('my-date-picker-range', 'disabled'), Input('submit-button', 'n_clicks'),State('oauth-token', 'data'),State('refresh-token', 'data'),State('token-expiry', 'data'),prevent_initial_call=True)
+def disable_button_and_calculate(n_clicks, oauth_token, refresh_token, token_expiry):
     if not oauth_token:
         return True, False, False
+    
+    # Try to refresh token if it's close to expiring
+    if refresh_token and token_expiry:
+        current_time = datetime.now().timestamp()
+        if current_time >= (token_expiry - 1800):  # Less than 30 min left
+            print("Token expiring soon, refreshing before data fetch...")
+            new_token, new_refresh, new_expiry = refresh_access_token(refresh_token)
+            if new_token:
+                oauth_token = new_token
+                print("Token refreshed!")
+    
     headers = {
         "Authorization": "Bearer " + oauth_token,
         "Accept": "application/json"
@@ -437,37 +450,101 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
 
     # Collecting data-----------------------------------------------------------------------------------------------------------------------
     
-    user_profile = requests.get("https://api.fitbit.com/1/user/-/profile.json", headers=headers).json()
-    response_heartrate = requests.get("https://api.fitbit.com/1/user/-/activities/heart/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    response_steps = requests.get("https://api.fitbit.com/1/user/-/activities/steps/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    response_spo2 = requests.get("https://api.fitbit.com/1/user/-/spo2/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+    try:
+        user_profile = requests.get("https://api.fitbit.com/1/user/-/profile.json", headers=headers).json()
+        response_heartrate = requests.get("https://api.fitbit.com/1/user/-/activities/heart/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        response_steps = requests.get("https://api.fitbit.com/1/user/-/activities/steps/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        response_spo2 = requests.get("https://api.fitbit.com/1/user/-/spo2/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+    except Exception as e:
+        print(f"ERROR fetching initial data: {e}")
+        # Return empty results if API calls fail
+        return dash.no_update, dash.no_update, dash.no_update, px.line(), [], px.bar(), px.imshow([]), [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [], ""
     
-    # New data endpoints with error handling
-    try:
-        response_hrv = requests.get("https://api.fitbit.com/1/user/-/hrv/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-        print(f"HRV API Response: {response_hrv}")
-    except Exception as e:
-        print(f"HRV API Error: {e}")
-        response_hrv = {}
-    try:
-        response_breathing = requests.get("https://api.fitbit.com/1/user/-/br/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-        print(f"Breathing API Response: {response_breathing}")
-    except Exception as e:
-        print(f"Breathing API Error: {e}")
-        response_breathing = {}
-    try:
-        response_cardio_fitness = requests.get("https://api.fitbit.com/1/user/-/cardioscore/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-        print(f"Cardio Fitness API Response: {response_cardio_fitness}")
-    except Exception as e:
-        print(f"Cardio Fitness API Error: {e}")
-        response_cardio_fitness = {}
-    try:
-        response_temperature = requests.get("https://api.fitbit.com/1/user/-/temp/core/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-        print(f"Temperature API Response: {response_temperature}")
-    except Exception as e:
-        print(f"Temperature API Error: {e}")
-        response_temperature = {}
+    # Build dates list early for parallel fetching
+    temp_dates_list = []
+    if 'activities-heart' in response_heartrate:
+        for entry in response_heartrate['activities-heart']:
+            temp_dates_list.append(entry['dateTime'])
+    else:
+        print(f"ERROR: No heart rate data in response: {response_heartrate}")
+        return dash.no_update, dash.no_update, dash.no_update, px.line(), [], px.bar(), px.imshow([]), [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [], ""
+    
+    # New data endpoints - Parallel day-by-day fetching (range endpoints confirmed don't work)
+    
+    def fetch_hrv_day(date_str):
+        try:
+            hrv_day = requests.get(f"https://api.fitbit.com/1/user/-/hrv/date/{date_str}.json", headers=headers, timeout=10).json()
+            if "hrv" in hrv_day and len(hrv_day["hrv"]) > 0:
+                return {"dateTime": date_str, "value": hrv_day["hrv"][0]["value"]}
+        except:
+            pass
+        return None
+    
+    def fetch_breathing_day(date_str):
+        try:
+            br_day = requests.get(f"https://api.fitbit.com/1/user/-/br/date/{date_str}.json", headers=headers, timeout=10).json()
+            if "br" in br_day and len(br_day["br"]) > 0:
+                return {"dateTime": date_str, "value": br_day["br"][0]["value"]}
+        except:
+            pass
+        return None
+    
+    def fetch_temperature_day(date_str):
+        try:
+            temp_day = requests.get(f"https://api.fitbit.com/1/user/-/temp/skin/date/{date_str}.json", headers=headers, timeout=10).json()
+            if "tempSkin" in temp_day and len(temp_day["tempSkin"]) > 0:
+                return {"dateTime": date_str, "value": temp_day["tempSkin"][0]["value"]}
+        except:
+            pass
+        return None
+    
+    # Fetch HRV, Breathing, and Temperature in parallel
+    response_hrv = {"hrv": []}
+    response_breathing = {"br": []}
+    response_temperature = {"tempSkin": []}
+    
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        # Submit all requests for all dates simultaneously
+        hrv_futures = {executor.submit(fetch_hrv_day, date): date for date in temp_dates_list}
+        br_futures = {executor.submit(fetch_breathing_day, date): date for date in temp_dates_list}
+        temp_futures = {executor.submit(fetch_temperature_day, date): date for date in temp_dates_list}
+        
+        # Collect results
+        for future in as_completed(hrv_futures):
+            result = future.result()
+            if result:
+                response_hrv["hrv"].append(result)
+        
+        for future in as_completed(br_futures):
+            result = future.result()
+            if result:
+                response_breathing["br"].append(result)
+        
+        for future in as_completed(temp_futures):
+            result = future.result()
+            if result:
+                response_temperature["tempSkin"].append(result)
+    
+    print(f"HRV: Fetched {len(response_hrv.get('hrv', []))} days")
+    print(f"Breathing: Fetched {len(response_breathing.get('br', []))} days")
+    print(f"Temperature: Fetched {len(response_temperature.get('tempSkin', []))} days")
+    
+    # Cardio Fitness - Fetch in 30-day chunks (API limitation)
+    response_cardio_fitness = {"cardioScore": []}
+    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+    current_dt = start_dt
+    while current_dt <= end_dt:
+        chunk_end = min(current_dt + timedelta(days=29), end_dt)
+        try:
+            cf_chunk = requests.get(f"https://api.fitbit.com/1/user/-/cardioscore/date/{current_dt.strftime('%Y-%m-%d')}/{chunk_end.strftime('%Y-%m-%d')}.json", headers=headers).json()
+            if "cardioScore" in cf_chunk:
+                response_cardio_fitness["cardioScore"].extend(cf_chunk["cardioScore"])
+        except:
+            pass
+        current_dt = chunk_end + timedelta(days=1)
+    print(f"Cardio Fitness API Response: Fetched {len(response_cardio_fitness.get('cardioScore', []))} days of data")
     try:
         response_calories = requests.get("https://api.fitbit.com/1/user/-/activities/calories/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
     except:
@@ -575,10 +652,14 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     cardio_fitness_list += [None]*(len(dates_str_list)-len(cardio_fitness_list))
     
     # Process Temperature data
-    for entry in response_temperature.get("tempCore", []):
+    for entry in response_temperature.get("tempSkin", []):
         try:
             temperature_list += [None]*(dates_str_list.index(entry["dateTime"])-len(temperature_list))
-            temperature_list.append(entry["value"]["value"])
+            # Temperature value might be nested or direct
+            if isinstance(entry["value"], dict):
+                temperature_list.append(entry["value"].get("nightlyRelative", entry["value"].get("value")))
+            else:
+                temperature_list.append(entry["value"])
         except (KeyError, ValueError):
             pass
     temperature_list += [None]*(len(dates_str_list)-len(temperature_list))
@@ -635,6 +716,11 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
 
         response_sleep = requests.get("https://api.fitbit.com/1.2/user/-/sleep/date/"+ temp_start_date +"/"+ temp_end_date +".json", headers=headers).json()
 
+        # Check if sleep data exists in response
+        if "sleep" not in response_sleep:
+            print(f"Sleep API returned unexpected response: {response_sleep}")
+            continue
+        
         for sleep_record in response_sleep["sleep"][::-1]:
             if sleep_record['isMainSleep']:
                 try:
