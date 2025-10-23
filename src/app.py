@@ -59,6 +59,10 @@ app.layout = html.Div(children=[
         id='errordialog',
         message='Invalid Access Token : Unable to fetch data',
     ),
+    dcc.ConfirmDialog(
+        id='rate-limit-dialog',
+        message='⚠️ Fitbit API Rate Limit Exceeded!\n\nYou have made too many API requests (150/hour limit).\n\nPlease wait at least 1 hour before generating another report.\n\nTip: Generate shorter date ranges to reduce API calls.',
+    ),
     html.Div(id="input-area", className="hidden-print",
     style={
         'display': 'flex',
@@ -409,27 +413,41 @@ def set_max_date_allowed(start_date):
 # Disables the button after click and starts calculations
 @app.callback(Output('errordialog', 'displayed'), Output('submit-button', 'disabled'), Output('my-date-picker-range', 'disabled'), Input('submit-button', 'n_clicks'),State('oauth-token', 'data'),State('refresh-token', 'data'),State('token-expiry', 'data'),prevent_initial_call=True)
 def disable_button_and_calculate(n_clicks, oauth_token, refresh_token, token_expiry):
+    print(f"🔍 Submit button clicked. Token present: {oauth_token is not None}")
+    print(f"🔍 Refresh token present: {refresh_token is not None}")
+    print(f"🔍 Token expiry: {token_expiry}")
+    
     if not oauth_token:
+        print("❌ No OAuth token found!")
         return True, False, False
     
     # Try to refresh token if it's close to expiring
     if refresh_token and token_expiry:
         current_time = datetime.now().timestamp()
+        print(f"🔍 Current time: {current_time}, Expiry: {token_expiry}, Diff: {token_expiry - current_time} seconds")
         if current_time >= (token_expiry - 1800):  # Less than 30 min left
-            print("Token expiring soon, refreshing before data fetch...")
+            print("⏱️ Token expiring soon, refreshing before data fetch...")
             new_token, new_refresh, new_expiry = refresh_access_token(refresh_token)
             if new_token:
                 oauth_token = new_token
-                print("Token refreshed!")
+                print("✅ Token refreshed successfully!")
+            else:
+                print("❌ Token refresh failed!")
     
     headers = {
         "Authorization": "Bearer " + oauth_token,
         "Accept": "application/json"
     }
     try:
-        token_response = requests.get("https://api.fitbit.com/1/user/-/profile.json", headers=headers)
+        print("🔍 Validating token with profile API...")
+        token_response = requests.get("https://api.fitbit.com/1/user/-/profile.json", headers=headers, timeout=10)
+        print(f"🔍 Validation response status: {token_response.status_code}")
+        if token_response.status_code != 200:
+            print(f"❌ Validation failed! Response: {token_response.text[:200]}")
         token_response.raise_for_status()
-    except:
+        print("✅ Token validation successful!")
+    except Exception as e:
+        print(f"❌ Token validation exception: {type(e).__name__}: {str(e)}")
         return True, False, False
     return False, True, True
 
@@ -452,14 +470,41 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     
     try:
         user_profile = requests.get("https://api.fitbit.com/1/user/-/profile.json", headers=headers).json()
+        
+        # Check for rate limiting or errors
+        if 'error' in user_profile:
+            error_code = user_profile['error'].get('code')
+            if error_code == 429:
+                print("⚠️ RATE LIMIT EXCEEDED! Fitbit API limit: 150 requests/hour")
+                print("Please wait at least 1 hour before generating another report.")
+                # Return with error message
+                empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
+                empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
+                return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [], ""
+            else:
+                print(f"API Error: {user_profile['error']}")
+                
         response_heartrate = requests.get("https://api.fitbit.com/1/user/-/activities/heart/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        
+        # Check for rate limiting in heart rate response
+        if 'error' in response_heartrate:
+            error_code = response_heartrate['error'].get('code')
+            if error_code == 429:
+                print("⚠️ RATE LIMIT EXCEEDED! Fitbit API limit: 150 requests/hour")
+                print("Please wait at least 1 hour before generating another report.")
+                empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
+                empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
+                return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [], ""
+                
         response_steps = requests.get("https://api.fitbit.com/1/user/-/activities/steps/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
         response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
         response_spo2 = requests.get("https://api.fitbit.com/1/user/-/spo2/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
     except Exception as e:
         print(f"ERROR fetching initial data: {e}")
-        # Return empty results if API calls fail
-        return dash.no_update, dash.no_update, dash.no_update, px.line(), [], px.bar(), px.imshow([]), [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [], ""
+        # Return empty results if API calls fail with valid empty plots
+        empty_fig = px.line(title="Error Fetching Data")
+        empty_heatmap = px.imshow([[0]], title="No Data Available")
+        return dash.no_update, dash.no_update, dash.no_update, empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [], ""
     
     # Build dates list early for parallel fetching
     temp_dates_list = []
