@@ -1329,6 +1329,17 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
 
         response_sleep = requests.get("https://api.fitbit.com/1.2/user/-/sleep/date/"+ temp_start_date +"/"+ temp_end_date +".json", headers=headers).json()
 
+        # Check for rate limit error
+        if "error" in response_sleep:
+            error_code = response_sleep.get("error", {}).get("code")
+            if error_code == 429:
+                print("⚠️ RATE LIMIT HIT during sleep data fetch! Returning partial data.")
+                # Break out of loop - we'll use what we have so far
+                break
+            else:
+                print(f"Sleep API error: {response_sleep}")
+                continue
+        
         # Check if sleep data exists in response
         if "sleep" not in response_sleep:
             print(f"Sleep API returned unexpected response: {response_sleep}")
@@ -1393,6 +1404,39 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             awake_list.append(None)
             total_sleep_list.append(None)
             sleep_start_times_list.append(None)
+
+    # Final safety check: Ensure all arrays are the same length as dates_list
+    expected_length = len(dates_list)
+    arrays_to_check = {
+        'dates_str_list': dates_str_list,
+        'rhr_list': rhr_list,
+        'steps_list': steps_list,
+        'weight_list': weight_list,
+        'spo2_list': spo2_list,
+        'deep_sleep_list': deep_sleep_list,
+        'light_sleep_list': light_sleep_list,
+        'rem_sleep_list': rem_sleep_list,
+        'awake_list': awake_list,
+        'total_sleep_list': total_sleep_list,
+        'sleep_start_times_list': sleep_start_times_list,
+        'fat_burn_minutes_list': fat_burn_minutes_list,
+        'cardio_minutes_list': cardio_minutes_list,
+        'peak_minutes_list': peak_minutes_list,
+        'hrv_list': hrv_list,
+        'breathing_list': breathing_list,
+        'cardio_fitness_list': cardio_fitness_list,
+        'temperature_list': temperature_list,
+        'calories_list': calories_list,
+        'distance_list': distance_list,
+        'floors_list': floors_list,
+        'azm_list': azm_list
+    }
+    
+    for name, arr in arrays_to_check.items():
+        if len(arr) != expected_length:
+            print(f"⚠️ Array length mismatch: {name} has {len(arr)} items, expected {expected_length}. Padding...")
+            while len(arr) < expected_length:
+                arr.append(None)
 
     df_merged = pd.DataFrame({
     "Date": dates_list,
