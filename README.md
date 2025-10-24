@@ -1,5 +1,13 @@
 # Fitbit Wellness Report Web UI - Enhanced Edition
 
+> **🔐 SECURITY UPDATE**: This app now uses a **dual-port architecture** for maximum security:
+> - **Port 5032**: Public OAuth callback (no health data exposed)
+> - **Port 5033**: Password-protected dashboard (internal only)
+> 
+> **📖 Setup Guide**: See [QUICK_START_SECURITY.md](QUICK_START_SECURITY.md) for deployment instructions.
+
+---
+
 ## 📊 Metrics Overview
 
 ### Standard Metrics (Always Included)
