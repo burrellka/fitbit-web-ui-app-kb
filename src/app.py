@@ -282,18 +282,17 @@ app.layout = html.Div(children=[
         end_date=datetime.today().date() - timedelta(days=1),
         start_date=datetime.today().date() - timedelta(days=365)
         ),
-        html.Div(style={'display': 'flex', 'flex-direction': 'column', 'align-items': 'flex-start', 'gap': '5px'}, children=[
-            dcc.Checklist(
-                id='advanced-metrics-toggle',
-                options=[{'label': ' Include Advanced Metrics (HRV, Breathing Rate, Temperature)', 'value': 'advanced'}],
-                value=[],  # Default: OFF
-                style={'font-size': '14px'}
-            ),
-            html.Div(id='advanced-metrics-warning', style={'font-size': '11px', 'color': '#ff6b6b', 'max-width': '400px', 'display': 'none'}, 
-                     children="⚠️ Advanced metrics require many API calls. Use shorter date ranges (30 days) to avoid rate limits (150 requests/hour).")
-        ]),
+        html.Div(style={'font-size': '13px', 'color': '#4caf50', 'font-weight': 'bold', 'margin-top': '10px'}, 
+                 children="✨ Advanced Metrics (HRV, Breathing Rate, Temperature) enabled with smart caching"),
         html.Button(id='submit-button', type='submit', children='Submit', n_clicks=0, className="button-primary"),
-        html.Button("Login to FitBit", id="login-button"),
+        html.Div(style={'display': 'flex', 'justify-content': 'center', 'gap': '10px', 'margin-top': '10px'}, children=[
+            html.Button("Login to FitBit", id="login-button"),
+            html.Button('Logout', id='logout-button', n_clicks=0, style={'background-color': '#dc3545', 'color': 'white'}),
+            html.Button("🗑️ Flush Cache", id="flush-cache-button-header", n_clicks=0, style={
+                'background-color': '#ff6b6b', 'color': 'white', 'border': 'none', 
+                'padding': '8px 16px', 'border-radius': '5px', 'cursor': 'pointer', 'font-size': '12px'
+            }),
+        ]),
     ]),
     dcc.Location(id="location"),
     dcc.Store(id="oauth-token", storage_type='session'),  # Store OAuth token in session storage
@@ -302,13 +301,6 @@ app.layout = html.Div(children=[
     html.Div(id="instruction-area", className="hidden-print", style={'margin-top':'30px', 'margin-right':'auto', 'margin-left':'auto','text-align':'center'}, children=[
         html.P("Select a date range to generate a report.", style={'font-size':'17px', 'font-weight': 'bold', 'color':'#54565e'}),
         html.Div(id="cache-status-display", style={'margin-top': '10px', 'padding': '10px', 'background-color': '#f0f8ff', 'border-radius': '5px', 'font-size': '14px'}),
-        html.Div(style={'margin-top': '10px'}, children=[
-            html.Button("🗑️ Flush Cache", id="flush-cache-button", n_clicks=0, style={
-                'background-color': '#ff6b6b', 'color': 'white', 'border': 'none', 'padding': '8px 16px',
-                'border-radius': '5px', 'cursor': 'pointer', 'font-size': '12px', 'margin-right': '10px'
-            }),
-            html.Span("Clear all cached data (preserves login)", style={'font-size': '11px', 'color': '#666'}),
-        ]),
     ]),
     dcc.Interval(id='cache-status-interval', interval=5000, n_intervals=0),  # Update every 5 seconds
     dcc.ConfirmDialog(id='flush-confirm', message=''),
@@ -652,11 +644,7 @@ def update_login_button(oauth_token):
     else:
         return "Login to FitBit", False
 
-@app.callback(Output('advanced-metrics-warning', 'style'), Input('advanced-metrics-toggle', 'value'))
-def toggle_advanced_metrics_warning(value):
-    if 'advanced' in value:
-        return {'font-size': '11px', 'color': '#ff6b6b', 'max-width': '400px', 'display': 'block'}
-    return {'font-size': '11px', 'color': '#ff6b6b', 'max-width': '400px', 'display': 'none'}
+# Advanced metrics are now always enabled with smart caching - no toggle needed!
 
 @app.callback(Output('cache-status-display', 'children'), Input('cache-status-interval', 'n_intervals'))
 def update_cache_status(n):
@@ -684,7 +672,7 @@ def update_cache_status(n):
     except Exception as e:
         return html.Span(f"Cache status unavailable: {e}", style={'color': '#999'})
 
-@app.callback(Output('flush-confirm', 'displayed'), Output('flush-confirm', 'message'), Input('flush-cache-button', 'n_clicks'))
+@app.callback(Output('flush-confirm', 'displayed'), Output('flush-confirm', 'message'), Input('flush-cache-button-header', 'n_clicks'))
 def flush_cache_handler(n_clicks):
     """Handle cache flush button click"""
     if n_clicks and n_clicks > 0:
@@ -859,9 +847,11 @@ def disable_button_and_calculate(n_clicks, oauth_token, refresh_token, token_exp
 # Fetch data and update graphs on click of submit
 @app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_sleep', 'figure'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise-type-filter', 'options'), Output('exercise_log_table', 'children'), Output('workout-date-selector', 'options'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('sleep-date-selector', 'options'), Output('graph_exercise_sleep_correlation', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
 Input('submit-button', 'disabled'),
-State('my-date-picker-range', 'start_date'), State('my-date-picker-range', 'end_date'), State('oauth-token', 'data'), State('advanced-metrics-toggle', 'value'),
+State('my-date-picker-range', 'start_date'), State('my-date-picker-range', 'end_date'), State('oauth-token', 'data'),
 prevent_initial_call=True)
-def update_output(n_clicks, start_date, end_date, oauth_token, advanced_metrics_enabled):
+def update_output(n_clicks, start_date, end_date, oauth_token):
+    # Advanced metrics now always enabled with smart caching!
+    advanced_metrics_enabled = ['advanced']  # Always enabled
 
     start_date = datetime.fromisoformat(start_date).strftime("%Y-%m-%d")
     end_date = datetime.fromisoformat(end_date).strftime("%Y-%m-%d")
@@ -1689,6 +1679,65 @@ def api_get_metrics(date):
             'date': date,
             'sleep': sleep_data,
             'advanced_metrics': advanced_metrics
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@server.route('/api/data/exercise/<date>', methods=['GET'])
+def api_get_exercise(date):
+    """Get exercise/activity data for a specific date"""
+    try:
+        # Get refresh token and fetch exercise data
+        refresh_token = cache.get_refresh_token()
+        if not refresh_token:
+            return jsonify({'success': False, 'error': 'No stored refresh token. Please login first.'}), 401
+        
+        # Refresh access token
+        client_id = os.environ['CLIENT_ID']
+        client_secret = os.environ['CLIENT_SECRET']
+        token_url = 'https://api.fitbit.com/oauth2/token'
+        
+        payload = {'grant_type': 'refresh_token', 'refresh_token': refresh_token}
+        token_creds = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("utf-8")
+        token_headers = {"Authorization": f"Basic {token_creds}", "Content-Type": "application/x-www-form-urlencoded"}
+        
+        token_response = requests.post(token_url, data=payload, headers=token_headers)
+        
+        if token_response.status_code != 200:
+            return jsonify({'success': False, 'error': 'Failed to refresh token'}), 401
+        
+        access_token = token_response.json().get('access_token')
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        # Fetch activities for the date
+        activities_response = requests.get(
+            f"https://api.fitbit.com/1/user/-/activities/list.json?afterDate={date}&sort=asc&offset=0&limit=100",
+            headers=headers,
+            timeout=10
+        ).json()
+        
+        # Filter activities for the specific date
+        activities_for_date = []
+        for activity in activities_response.get('activities', []):
+            if activity['startTime'][:10] == date:
+                activities_for_date.append({
+                    'activity_name': activity.get('activityName'),
+                    'duration_ms': activity.get('duration'),
+                    'duration_min': activity.get('duration', 0) // 60000,
+                    'calories': activity.get('calories'),
+                    'avg_heart_rate': activity.get('averageHeartRate'),
+                    'steps': activity.get('steps'),
+                    'distance': activity.get('distance'),
+                    'distance_mi': round(activity.get('distance', 0) * 0.621371, 2) if activity.get('distance') else None,
+                    'start_time': activity.get('startTime'),
+                    'active_duration': activity.get('activeDuration'),
+                })
+        
+        return jsonify({
+            'success': True,
+            'date': date,
+            'activities': activities_for_date,
+            'count': len(activities_for_date)
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
