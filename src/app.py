@@ -268,36 +268,48 @@ app.layout = html.Div(children=[
         'display': 'flex',
         'align-items': 'center',
         'justify-content': 'center',
-        'gap': '20px',
+        'flex-direction': 'column',
+        'gap': '15px',
         'margin': 'auto',
-        'flex-wrap': 'wrap',
-        'margin-top': '30px'
+        'margin-top': '30px',
+        'max-width': '900px'
     },children=[
+        # Date picker row
         dcc.DatePickerRange(
-        id='my-date-picker-range',
-        display_format='MMMM DD, Y',
-        minimum_nights=40,
-        max_date_allowed=datetime.today().date() - timedelta(days=1),
-        min_date_allowed=datetime.today().date() - timedelta(days=1000),
-        end_date=datetime.today().date() - timedelta(days=1),
-        start_date=datetime.today().date() - timedelta(days=365)
+            id='my-date-picker-range',
+            display_format='MMMM DD, Y',
+            minimum_nights=0,
+            max_date_allowed=datetime.today().date(),
+            min_date_allowed=datetime.today().date() - timedelta(days=1000),
+            end_date=datetime.today().date() - timedelta(days=1),
+            start_date=datetime.today().date() - timedelta(days=7),
+            style={'margin-bottom': '5px'}
         ),
-        html.Button(id='submit-button', type='submit', children='Submit', n_clicks=0, className="button-primary"),
-        html.Div(style={'display': 'flex', 'justify-content': 'center', 'gap': '10px', 'margin-top': '10px', 'align-items': 'center'}, children=[
-            html.Button("Login to FitBit", id="login-button", style={
-                'background-color': '#636efa', 'color': 'white', 'border': 'none',
-                'padding': '10px 20px', 'border-radius': '5px', 'cursor': 'pointer', 
-                'font-size': '14px', 'font-weight': 'bold', 'min-width': '140px'
+        # All buttons in one row
+        html.Div(style={'display': 'flex', 'justify-content': 'center', 'gap': '12px', 'flex-wrap': 'wrap', 'align-items': 'center'}, children=[
+            html.Button(id='submit-button', type='submit', children='📊 Submit', n_clicks=0, style={
+                'background-color': '#28a745', 'color': 'white', 'border': 'none',
+                'padding': '12px 24px', 'border-radius': '6px', 'cursor': 'pointer', 
+                'font-size': '15px', 'font-weight': 'bold', 'min-width': '140px',
+                'box-shadow': '0 2px 4px rgba(0,0,0,0.1)', 'transition': 'all 0.2s'
             }),
-            html.Button('Logout', id='logout-button', n_clicks=0, style={
+            html.Button("🔐 Login to FitBit", id="login-button", style={
+                'background-color': '#636efa', 'color': 'white', 'border': 'none',
+                'padding': '12px 24px', 'border-radius': '6px', 'cursor': 'pointer', 
+                'font-size': '15px', 'font-weight': 'bold', 'min-width': '140px',
+                'box-shadow': '0 2px 4px rgba(0,0,0,0.1)', 'transition': 'all 0.2s'
+            }),
+            html.Button('🚪 Logout', id='logout-button', n_clicks=0, style={
                 'background-color': '#dc3545', 'color': 'white', 'border': 'none',
-                'padding': '10px 20px', 'border-radius': '5px', 'cursor': 'pointer',
-                'font-size': '14px', 'font-weight': 'bold', 'min-width': '140px'
+                'padding': '12px 24px', 'border-radius': '6px', 'cursor': 'pointer',
+                'font-size': '15px', 'font-weight': 'bold', 'min-width': '140px',
+                'box-shadow': '0 2px 4px rgba(0,0,0,0.1)', 'transition': 'all 0.2s'
             }),
             html.Button("🗑️ Flush Cache", id="flush-cache-button-header", n_clicks=0, style={
                 'background-color': '#ff6b6b', 'color': 'white', 'border': 'none', 
-                'padding': '10px 20px', 'border-radius': '5px', 'cursor': 'pointer', 
-                'font-size': '14px', 'font-weight': 'bold', 'min-width': '140px'
+                'padding': '12px 24px', 'border-radius': '6px', 'cursor': 'pointer', 
+                'font-size': '15px', 'font-weight': 'bold', 'min-width': '140px',
+                'box-shadow': '0 2px 4px rgba(0,0,0,0.1)', 'transition': 'all 0.2s'
             }),
         ]),
     ]),
@@ -951,7 +963,7 @@ def update_sleep_colors(value, fig):
              [Input('my-date-picker-range', 'start_date')])
 def set_max_date_allowed(start_date):
     start = datetime.strptime(start_date, "%Y-%m-%d")
-    current_date = datetime.today().date() - timedelta(days=1)
+    current_date = datetime.today().date()  # Allow today's date
     max_end_date = min((start + timedelta(days=365)).date(), current_date)
     return max_end_date, max_end_date
 
@@ -1320,74 +1332,99 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     while len(azm_list) < len(dates_str_list):
         azm_list.append(None)
 
-    for i in range(0,len(dates_str_list),100):
-        end_index = i+100
-        if i+100 > len(dates_str_list):
-            end_index = len(dates_str_list)
-        temp_start_date = dates_str_list[i]
-        temp_end_date = dates_str_list[end_index-1]
-
-        response_sleep = requests.get("https://api.fitbit.com/1.2/user/-/sleep/date/"+ temp_start_date +"/"+ temp_end_date +".json", headers=headers).json()
-
-        # Check for rate limit error
-        if "error" in response_sleep:
-            error_code = response_sleep.get("error", {}).get("code")
-            if error_code == 429:
-                print("⚠️ RATE LIMIT HIT during sleep data fetch! Returning partial data.")
-                # Break out of loop - we'll use what we have so far
-                break
-            else:
-                print(f"Sleep API error: {response_sleep}")
-                continue
-        
-        # Check if sleep data exists in response
-        if "sleep" not in response_sleep:
-            print(f"Sleep API returned unexpected response: {response_sleep}")
-            continue
-
-        for sleep_record in response_sleep["sleep"][::-1]:
-            if sleep_record['isMainSleep']:
-                try:
-                    sleep_start_time = datetime.strptime(sleep_record["startTime"], "%Y-%m-%dT%H:%M:%S.%f")
-                    if sleep_start_time.hour < 12:
-                        sleep_start_time = sleep_start_time + timedelta(hours=12)
-                    else:
-                        sleep_start_time = sleep_start_time + timedelta(hours=-12)
-                    sleep_time_of_day = sleep_start_time.time()
-                    # Get the actual sleep score - it's nested in a sleepScore object
-                    sleep_score = None
-                    if 'sleepScore' in sleep_record and isinstance(sleep_record['sleepScore'], dict):
-                        sleep_score = sleep_record['sleepScore'].get('overall', None)
-                        print(f"Sleep score for {sleep_record['dateOfSleep']}: {sleep_score} (from sleepScore.overall)")
-                    elif 'efficiency' in sleep_record:
-                        # Fallback to efficiency if no sleep score available
-                        sleep_score = sleep_record['efficiency']
-                        print(f"Sleep score for {sleep_record['dateOfSleep']}: {sleep_score} (from efficiency - no sleepScore available)")
-                    
-                    sleep_record_dict[sleep_record['dateOfSleep']] = {
-                        'deep': sleep_record['levels']['summary']['deep']['minutes'],
-                        'light': sleep_record['levels']['summary']['light']['minutes'],
-                        'rem': sleep_record['levels']['summary']['rem']['minutes'],
-                        'wake': sleep_record['levels']['summary']['wake']['minutes'],
-                        'total_sleep': sleep_record["minutesAsleep"],
-                        'start_time_seconds': (sleep_time_of_day.hour * 3600) + (sleep_time_of_day.minute * 60) + sleep_time_of_day.second,
-                        'sleep_score': sleep_score,  # Fitbit's actual sleep score from sleepScore.overall
-                        'sleep_record': sleep_record  # Store full record for drill-down
-                    }
-                    
-                    # Store in global dict for callback access
-                    sleep_detail_data_store[sleep_record['dateOfSleep']] = {
-                        'deep': sleep_record['levels']['summary']['deep']['minutes'],
-                        'light': sleep_record['levels']['summary']['light']['minutes'],
-                        'rem': sleep_record['levels']['summary']['rem']['minutes'],
-                        'wake': sleep_record['levels']['summary']['wake']['minutes'],
-                        'total_sleep': sleep_record["minutesAsleep"],
-                        'start_time': sleep_record.get('startTime', ''),
-                        'sleep_score': sleep_score,
-                        'efficiency': sleep_record.get('efficiency')
-                    }
-                except KeyError as E:
-                    pass
+    # 🚀 USE CACHE FOR SLEEP DATA - Only fetch missing dates!
+    print(f"📊 Fetching sleep data for {len(dates_str_list)} dates...")
+    
+    # First, check which dates are in cache
+    cached_count = 0
+    missing_dates = []
+    for date_str in dates_str_list:
+        cached_data = cache.get_sleep_data(date_str)
+        if cached_data:
+            # Use cached data!
+            cached_count += 1
+            try:
+                # Parse start_time to calculate sleep_time_of_day
+                sleep_start_time = datetime.strptime(cached_data['start_time'], "%Y-%m-%dT%H:%M:%S.%f")
+                if sleep_start_time.hour < 12:
+                    sleep_start_time = sleep_start_time + timedelta(hours=12)
+                else:
+                    sleep_start_time = sleep_start_time + timedelta(hours=-12)
+                sleep_time_of_day = sleep_start_time.time()
+                
+                sleep_record_dict[date_str] = {
+                    'deep': cached_data['deep'],
+                    'light': cached_data['light'],
+                    'rem': cached_data['rem'],
+                    'wake': cached_data['wake'],
+                    'total_sleep': cached_data['total_sleep'],
+                    'start_time_seconds': (sleep_time_of_day.hour * 3600) + (sleep_time_of_day.minute * 60) + sleep_time_of_day.second,
+                    'sleep_score': cached_data['sleep_score']
+                }
+                
+                # Store in global dict for drill-down
+                sleep_detail_data_store[date_str] = {
+                    'deep': cached_data['deep'],
+                    'light': cached_data['light'],
+                    'rem': cached_data['rem'],
+                    'wake': cached_data['wake'],
+                    'total_sleep': cached_data['total_sleep'],
+                    'start_time': cached_data['start_time'],
+                    'sleep_score': cached_data['sleep_score'],
+                    'efficiency': cached_data['efficiency']
+                }
+            except Exception as e:
+                print(f"⚠️ Error processing cached data for {date_str}: {e}")
+        else:
+            # Need to fetch this date
+            missing_dates.append(date_str)
+    
+    print(f"✅ Loaded {cached_count} dates from cache")
+    print(f"🔄 Need to fetch {len(missing_dates)} dates from API")
+    
+    # Fetch missing dates from API (in batches of 30 to avoid rate limits)
+    if missing_dates:
+        for i in range(0, len(missing_dates), 30):
+            batch = missing_dates[i:i+30]
+            print(f"📥 Fetching sleep batch {i//30 + 1} ({len(batch)} dates)...")
+            
+            # Use the populate_sleep_score_cache function which handles caching
+            fetched_count = populate_sleep_score_cache(batch, headers, force_refresh=False)
+            
+            # Now load the newly cached data into our dict
+            for date_str in batch:
+                cached_data = cache.get_sleep_data(date_str)
+                if cached_data:
+                    try:
+                        sleep_start_time = datetime.strptime(cached_data['start_time'], "%Y-%m-%dT%H:%M:%S.%f")
+                        if sleep_start_time.hour < 12:
+                            sleep_start_time = sleep_start_time + timedelta(hours=12)
+                        else:
+                            sleep_start_time = sleep_start_time + timedelta(hours=-12)
+                        sleep_time_of_day = sleep_start_time.time()
+                        
+                        sleep_record_dict[date_str] = {
+                            'deep': cached_data['deep'],
+                            'light': cached_data['light'],
+                            'rem': cached_data['rem'],
+                            'wake': cached_data['wake'],
+                            'total_sleep': cached_data['total_sleep'],
+                            'start_time_seconds': (sleep_time_of_day.hour * 3600) + (sleep_time_of_day.minute * 60) + sleep_time_of_day.second,
+                            'sleep_score': cached_data['sleep_score']
+                        }
+                        
+                        sleep_detail_data_store[date_str] = {
+                            'deep': cached_data['deep'],
+                            'light': cached_data['light'],
+                            'rem': cached_data['rem'],
+                            'wake': cached_data['wake'],
+                            'total_sleep': cached_data['total_sleep'],
+                            'start_time': cached_data['start_time'],
+                            'sleep_score': cached_data['sleep_score'],
+                            'efficiency': cached_data['efficiency']
+                        }
+                    except Exception as e:
+                        print(f"⚠️ Error processing fetched data for {date_str}: {e}")
 
     for day in dates_str_list:
         if day in sleep_record_dict:
