@@ -16,7 +16,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from cache_manager import FitbitCache
 import threading
 import time
-from flask import jsonify, request
+from flask import jsonify, request, session, redirect as flask_redirect
+from functools import wraps
 
 
 # %%
@@ -242,6 +243,247 @@ for variable in ['CLIENT_ID','CLIENT_SECRET','REDIRECT_URL'] :
 app = dash.Dash(__name__)
 app.title = "Fitbit Wellness Report"
 server = app.server
+
+# Configure Flask session for password protection
+server.secret_key = os.environ.get('SECRET_KEY', os.urandom(24).hex())
+DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD', '')
+
+# Password protection middleware
+@server.before_request
+def check_auth():
+    """
+    Check if user is authenticated before allowing access to dashboard.
+    Bypasses auth for: login page, login POST, static assets, health check, and OAuth callback with code
+    """
+    # Allow these paths without authentication
+    allowed_paths = ['/login', '/_dash-', '/assets/', '/health', '/_favicon.ico']
+    
+    # Check if path is allowed
+    if any(request.path.startswith(path) for path in allowed_paths):
+        return None
+    
+    # Allow OAuth callback (when Fitbit redirects with code parameter)
+    if request.path == '/' and request.args.get('code'):
+        return None
+    
+    # Check if user is authenticated
+    if not session.get('authenticated'):
+        # Not authenticated - redirect to login
+        if request.path != '/':
+            return flask_redirect('/login')
+        # For root path, show login page
+        return flask_redirect('/login')
+    
+    return None
+
+@server.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page for dashboard access"""
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        if password == DASHBOARD_PASSWORD:
+            session['authenticated'] = True
+            session.permanent = True
+            print(f"✅ User authenticated successfully from {request.remote_addr}")
+            return flask_redirect('/')
+        else:
+            print(f"⚠️ Failed login attempt from {request.remote_addr}")
+            return f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Login - Fitbit Wellness Dashboard</title>
+                <style>
+                    body {{
+                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        height: 100vh;
+                        margin: 0;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    }}
+                    .login-container {{
+                        background: white;
+                        padding: 40px;
+                        border-radius: 15px;
+                        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                        max-width: 400px;
+                        width: 90%;
+                    }}
+                    h1 {{
+                        color: #333;
+                        text-align: center;
+                        margin-bottom: 10px;
+                    }}
+                    .subtitle {{
+                        text-align: center;
+                        color: #666;
+                        margin-bottom: 30px;
+                        font-size: 14px;
+                    }}
+                    input[type="password"] {{
+                        width: 100%;
+                        padding: 12px;
+                        border: 2px solid #ddd;
+                        border-radius: 8px;
+                        font-size: 16px;
+                        box-sizing: border-box;
+                        margin-bottom: 20px;
+                    }}
+                    input[type="password"]:focus {{
+                        outline: none;
+                        border-color: #667eea;
+                    }}
+                    button {{
+                        width: 100%;
+                        padding: 12px;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white;
+                        border: none;
+                        border-radius: 8px;
+                        font-size: 16px;
+                        font-weight: bold;
+                        cursor: pointer;
+                        transition: transform 0.2s;
+                    }}
+                    button:hover {{
+                        transform: translateY(-2px);
+                    }}
+                    .error {{
+                        background: #ffebee;
+                        color: #c62828;
+                        padding: 12px;
+                        border-radius: 8px;
+                        margin-bottom: 20px;
+                        text-align: center;
+                        font-weight: bold;
+                    }}
+                    .icon {{
+                        text-align: center;
+                        font-size: 48px;
+                        margin-bottom: 20px;
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="login-container">
+                    <div class="icon">🔐</div>
+                    <h1>Dashboard Login</h1>
+                    <div class="subtitle">Fitbit Wellness Report</div>
+                    <div class="error">❌ Incorrect password. Please try again.</div>
+                    <form method="POST">
+                        <input type="password" name="password" placeholder="Enter dashboard password" required autofocus>
+                        <button type="submit">🔓 Unlock Dashboard</button>
+                    </form>
+                </div>
+            </body>
+            </html>
+            """
+    
+    # GET request - show login form
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Login - Fitbit Wellness Dashboard</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            .login-container {
+                background: white;
+                padding: 40px;
+                border-radius: 15px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                max-width: 400px;
+                width: 90%;
+            }
+            h1 {
+                color: #333;
+                text-align: center;
+                margin-bottom: 10px;
+            }
+            .subtitle {
+                text-align: center;
+                color: #666;
+                margin-bottom: 30px;
+                font-size: 14px;
+            }
+            input[type="password"] {
+                width: 100%;
+                padding: 12px;
+                border: 2px solid #ddd;
+                border-radius: 8px;
+                font-size: 16px;
+                box-sizing: border-box;
+                margin-bottom: 20px;
+            }
+            input[type="password"]:focus {
+                outline: none;
+                border-color: #667eea;
+            }
+            button {
+                width: 100%;
+                padding: 12px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-size: 16px;
+                font-weight: bold;
+                cursor: pointer;
+                transition: transform 0.2s;
+            }
+            button:hover {
+                transform: translateY(-2px);
+            }
+            .icon {
+                text-align: center;
+                font-size: 48px;
+                margin-bottom: 20px;
+            }
+            .info {
+                background: #e3f2fd;
+                color: #1976d2;
+                padding: 12px;
+                border-radius: 8px;
+                margin-top: 20px;
+                text-align: center;
+                font-size: 13px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="login-container">
+            <div class="icon">🔐</div>
+            <h1>Dashboard Login</h1>
+            <div class="subtitle">Fitbit Wellness Report</div>
+            <form method="POST">
+                <input type="password" name="password" placeholder="Enter dashboard password" required autofocus>
+                <button type="submit">🔓 Unlock Dashboard</button>
+            </form>
+            <div class="info">
+                🛡️ This dashboard is password-protected<br>
+                Enter your password to access your wellness data
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+@server.route('/logout')
+def logout():
+    """Logout and clear session"""
+    session.clear()
+    print(f"👋 User logged out from {request.remote_addr}")
+    return flask_redirect('/login')
 
 def refresh_access_token(refresh_token):
     """Refresh the access token using the refresh token"""

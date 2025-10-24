@@ -6,11 +6,21 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
+
+# Install supervisor for running multiple services
+RUN apt-get update && apt-get install -y supervisor && rm -rf /var/lib/apt/lists/*
+
+# Create log directories
+RUN mkdir -p /var/log/supervisor
+
 RUN mkdir -p /app/src
 COPY ./requirements.txt requirements.txt
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 COPY ./src/ /app/src
-EXPOSE 80
-RUN groupadd --gid 1000 appuser && useradd --uid 1000 --gid appuser --shell /bin/bash --create-home appuser && chown -R appuser:appuser /app
-USER appuser
-CMD ["gunicorn", "--bind", "0.0.0.0:80", "--chdir", "src", "app:server"]
+COPY ./supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Expose both ports: 5032 for OAuth callback (public), 5033 for dashboard (internal)
+EXPOSE 5032 5033
+
+# Run as root (supervisor requires it)
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
