@@ -584,6 +584,14 @@ app.layout = html.Div(children=[
             ])
         ]),
         
+        # Cache Status Panel
+        html.Div(id='detailed-cache-status', className="hidden-print", style={'max-width': '1200px', 'margin': 'auto', 'padding': '30px', 'background-color': '#34495e', 'border-radius': '10px', 'margin-top': '20px'}, children=[
+            html.H4("🗄️ Cache Status", style={'color': 'white', 'text-align': 'center', 'margin-bottom': '20px'}),
+            html.Div(id='cache-stats-grid', children=[
+                html.P("Loading cache statistics...", style={'color': '#bdc3c7', 'text-align': 'center'})
+            ])
+        ]),
+        
         html.Div(style={"height": '25px'}),
     ]),
 ])
@@ -685,12 +693,18 @@ def update_login_button(oauth_token):
 
 # Advanced metrics are now always enabled with smart caching - no toggle needed!
 
-@app.callback(Output('cache-status-display', 'children'), Input('cache-status-interval', 'n_intervals'))
+@app.callback(
+    Output('cache-status-display', 'children'),
+    Output('cache-stats-grid', 'children'),
+    Input('cache-status-interval', 'n_intervals')
+)
 def update_cache_status(n):
-    """Display current cache status"""
+    """Display current cache status in header and detailed grid"""
     try:
         stats = cache.get_cache_stats()
+        detailed_stats = cache.get_detailed_cache_stats()
         
+        # Header status
         if stats['sleep_records'] == 0:
             status_emoji = "⏳"
             status_text = "Cache Empty - Will auto-populate on first report"
@@ -704,12 +718,57 @@ def update_cache_status(n):
             status_text = f"Cache Ready: {stats['sleep_records']} days | {stats['sleep_date_range']}"
             color = "#4caf50"
         
-        return html.Div([
+        header_status = html.Div([
             html.Span(status_emoji, style={'font-size': '18px', 'margin-right': '8px'}),
             html.Span(status_text, style={'color': color, 'font-weight': 'bold'})
         ])
+        
+        # Detailed grid
+        metrics_grid = html.Div(style={'display': 'grid', 'grid-template-columns': 'repeat(auto-fit, minmax(250px, 1fr))', 'gap': '20px'}, children=[
+            # Sleep Data
+            html.Div(style={'background-color': '#2c3e50', 'padding': '20px', 'border-radius': '8px', 'border-left': '4px solid #3498db'}, children=[
+                html.Div(style={'display': 'flex', 'align-items': 'center', 'margin-bottom': '10px'}, children=[
+                    html.Span("💤", style={'font-size': '24px', 'margin-right': '10px'}),
+                    html.H5("Sleep Data", style={'color': 'white', 'margin': '0'})
+                ]),
+                html.P(f"{detailed_stats['sleep']['count']} days cached", style={'color': '#3498db', 'font-size': '18px', 'font-weight': 'bold', 'margin': '5px 0'}),
+                html.P(detailed_stats['sleep']['date_range'], style={'color': '#bdc3c7', 'font-size': '12px', 'margin': '0'})
+            ]),
+            # HRV
+            html.Div(style={'background-color': '#2c3e50', 'padding': '20px', 'border-radius': '8px', 'border-left': '4px solid #e74c3c'}, children=[
+                html.Div(style={'display': 'flex', 'align-items': 'center', 'margin-bottom': '10px'}, children=[
+                    html.Span("💗", style={'font-size': '24px', 'margin-right': '10px'}),
+                    html.H5("Heart Rate Variability", style={'color': 'white', 'margin': '0'})
+                ]),
+                html.P(f"{detailed_stats['hrv']['count']} days cached", style={'color': '#e74c3c', 'font-size': '18px', 'font-weight': 'bold', 'margin': '5px 0'}),
+                html.P(detailed_stats['hrv']['date_range'], style={'color': '#bdc3c7', 'font-size': '12px', 'margin': '0'})
+            ]),
+            # Breathing Rate
+            html.Div(style={'background-color': '#2c3e50', 'padding': '20px', 'border-radius': '8px', 'border-left': '4px solid #1abc9c'}, children=[
+                html.Div(style={'display': 'flex', 'align-items': 'center', 'margin-bottom': '10px'}, children=[
+                    html.Span("🫁", style={'font-size': '24px', 'margin-right': '10px'}),
+                    html.H5("Breathing Rate", style={'color': 'white', 'margin': '0'})
+                ]),
+                html.P(f"{detailed_stats['breathing_rate']['count']} days cached", style={'color': '#1abc9c', 'font-size': '18px', 'font-weight': 'bold', 'margin': '5px 0'}),
+                html.P(detailed_stats['breathing_rate']['date_range'], style={'color': '#bdc3c7', 'font-size': '12px', 'margin': '0'})
+            ]),
+            # Temperature
+            html.Div(style={'background-color': '#2c3e50', 'padding': '20px', 'border-radius': '8px', 'border-left': '4px solid #f39c12'}, children=[
+                html.Div(style={'display': 'flex', 'align-items': 'center', 'margin-bottom': '10px'}, children=[
+                    html.Span("🌡️", style={'font-size': '24px', 'margin-right': '10px'}),
+                    html.H5("Temperature", style={'color': 'white', 'margin': '0'})
+                ]),
+                html.P(f"{detailed_stats['temperature']['count']} days cached", style={'color': '#f39c12', 'font-size': '18px', 'font-weight': 'bold', 'margin': '5px 0'}),
+                html.P(detailed_stats['temperature']['date_range'], style={'color': '#bdc3c7', 'font-size': '12px', 'margin': '0'})
+            ]),
+        ])
+        
+        return header_status, metrics_grid
+        
     except Exception as e:
-        return html.Span(f"Cache status unavailable: {e}", style={'color': '#999'})
+        error_msg = html.Span(f"Cache status unavailable: {e}", style={'color': '#999'})
+        error_grid = html.P(f"Unable to load cache statistics: {e}", style={'color': '#e74c3c', 'text-align': 'center'})
+        return error_msg, error_grid
 
 @app.callback(Output('flush-confirm', 'displayed'), Output('flush-confirm', 'message'), Input('flush-cache-button-header', 'n_clicks'))
 def flush_cache_handler(n_clicks):

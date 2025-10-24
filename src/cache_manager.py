@@ -231,6 +231,49 @@ class FitbitCache:
                 'advanced_date_range': f"{advanced_stats[1]} to {advanced_stats[2]}" if advanced_stats[1] else "No data"
             }
     
+    def get_detailed_cache_stats(self) -> Dict:
+        """Get detailed per-metric statistics about the cache"""
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Sleep data
+            cursor.execute('SELECT COUNT(*), MIN(date), MAX(date) FROM sleep_cache WHERE sleep_score IS NOT NULL')
+            sleep_stats = cursor.fetchone()
+            
+            # HRV
+            cursor.execute('SELECT COUNT(*), MIN(date), MAX(date) FROM advanced_metrics_cache WHERE hrv IS NOT NULL')
+            hrv_stats = cursor.fetchone()
+            
+            # Breathing Rate
+            cursor.execute('SELECT COUNT(*), MIN(date), MAX(date) FROM advanced_metrics_cache WHERE breathing_rate IS NOT NULL')
+            breathing_stats = cursor.fetchone()
+            
+            # Temperature
+            cursor.execute('SELECT COUNT(*), MIN(date), MAX(date) FROM advanced_metrics_cache WHERE temperature IS NOT NULL')
+            temp_stats = cursor.fetchone()
+            
+            conn.close()
+            
+            return {
+                'sleep': {
+                    'count': sleep_stats[0] or 0,
+                    'date_range': f"{sleep_stats[1]} to {sleep_stats[2]}" if sleep_stats[1] else "No data"
+                },
+                'hrv': {
+                    'count': hrv_stats[0] or 0,
+                    'date_range': f"{hrv_stats[1]} to {hrv_stats[2]}" if hrv_stats[1] else "No data"
+                },
+                'breathing_rate': {
+                    'count': breathing_stats[0] or 0,
+                    'date_range': f"{breathing_stats[1]} to {breathing_stats[2]}" if breathing_stats[1] else "No data"
+                },
+                'temperature': {
+                    'count': temp_stats[0] or 0,
+                    'date_range': f"{temp_stats[1]} to {temp_stats[2]}" if temp_stats[1] else "No data"
+                }
+            }
+    
     def store_refresh_token(self, refresh_token: str, expires_in: int = 28800):
         """Store encrypted refresh token for automatic sync"""
         # Simple base64 encoding (not cryptographically secure, but adds obfuscation)
