@@ -115,7 +115,56 @@ curl http://localhost:5032/api/data/sleep/2025-10-22
 
 ---
 
-### 4. Get All Metrics
+### 4. Get Exercise Data
+
+**GET** `/api/data/exercise/<date>`
+
+Retrieve exercise/activity data for a specific date.
+
+**Parameters:**
+- `date` (path): Date in YYYY-MM-DD format
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "date": "2025-10-22",
+  "activities": [
+    {
+      "activity_name": "Run",
+      "duration_ms": 1800000,
+      "duration_min": 30,
+      "calories": 250,
+      "avg_heart_rate": 145,
+      "steps": 3500,
+      "distance": 5.2,
+      "distance_mi": 3.23,
+      "start_time": "2025-10-22T07:00:00.000",
+      "active_duration": 1750000
+    }
+  ],
+  "count": 1
+}
+```
+
+**Response (No Activities):**
+```json
+{
+  "success": true,
+  "date": "2025-10-22",
+  "activities": [],
+  "count": 0
+}
+```
+
+**Example:**
+```bash
+curl http://localhost:5032/api/data/exercise/2025-10-22
+```
+
+---
+
+### 5. Get All Metrics
 
 **GET** `/api/data/metrics/<date>`
 
