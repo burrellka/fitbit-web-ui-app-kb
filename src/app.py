@@ -148,12 +148,18 @@ def background_cache_builder(access_token: str):
             print(f"📥 Background cache builder: Fetching batch {i//batch_size + 1} ({len(batch)} dates)...")
             
             fetched = populate_sleep_score_cache(batch, headers, force_refresh=False)
+            
+            # Check for rate limit
+            if fetched == -1:
+                print("🛑 Background cache builder: Rate limit hit! Pausing for 1 hour...")
+                time.sleep(3600)  # Wait 1 hour before resuming
+                continue
+            
             print(f"✅ Background cache builder: Cached {fetched} dates")
             
             # Sleep between batches to avoid rate limits (30 seconds)
             if i + batch_size < len(missing_dates):
                 print("⏸️ Background cache builder: Waiting 30 seconds before next batch...")
-                import time
                 time.sleep(30)
         
         print("🎉 Background cache builder: Cache population complete!")
@@ -172,6 +178,9 @@ def populate_sleep_score_cache(dates_to_fetch: list, headers: dict, force_refres
         dates_to_fetch: List of dates to fetch
         headers: API headers
         force_refresh: If True, re-fetch even if already cached (useful for today's data)
+    
+    Returns:
+        Number of dates fetched, or -1 if rate limit hit
     """
     fetched_count = 0
     for date_str in dates_to_fetch:
@@ -182,6 +191,13 @@ def populate_sleep_score_cache(dates_to_fetch: list, headers: dict, force_refres
                 headers=headers,
                 timeout=10
             ).json()
+            
+            # Check for rate limit
+            if 'error' in response:
+                error_code = response.get('error', {}).get('code')
+                if error_code == 429:
+                    print("⚠️ Rate limit hit in cache population! Stopping...")
+                    return -1  # Signal rate limit
             
             if 'sleep' in response and len(response['sleep']) > 0:
                 for sleep_record in response['sleep']:
@@ -1036,10 +1052,10 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             if error_code == 429:
                 print("⚠️ RATE LIMIT EXCEEDED! Fitbit API limit: 150 requests/hour")
                 print("Please wait at least 1 hour before generating another report.")
-                # Return with error message
+                # Return with error message (44 outputs total)
                 empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
                 empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
-                return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), px.line(), px.pie(), px.scatter(), html.P("Rate limit exceeded"), ""
+                return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), html.P("Rate limit exceeded"), ""
             else:
                 print(f"API Error: {user_profile['error']}")
                 
@@ -1053,7 +1069,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                 print("Please wait at least 1 hour before generating another report.")
                 empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
                 empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
-                return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), px.line(), px.pie(), px.scatter(), html.P("Rate limit exceeded"), ""
+                return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), html.P("Rate limit exceeded"), ""
                 
         response_steps = requests.get("https://api.fitbit.com/1/user/-/activities/steps/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
         response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
