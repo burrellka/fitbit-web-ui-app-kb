@@ -1238,53 +1238,57 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         spo2_list.append(entry["value"]["avg"])
     spo2_list += [None]*(len(dates_str_list)-len(spo2_list))
     
-    # Process HRV data
+    # Process HRV data - only include dates in our range
     for entry in response_hrv.get("hrv", []):
         try:
-            hrv_list += [None]*(dates_str_list.index(entry["dateTime"])-len(hrv_list))
-            hrv_list.append(entry["value"]["dailyRmssd"])
+            if entry["dateTime"] in dates_str_list:  # Only process if in our date range
+                hrv_list += [None]*(dates_str_list.index(entry["dateTime"])-len(hrv_list))
+                hrv_list.append(entry["value"]["dailyRmssd"])
         except (KeyError, ValueError):
             pass
     hrv_list += [None]*(len(dates_str_list)-len(hrv_list))
     
-    # Process Breathing Rate data
+    # Process Breathing Rate data - only include dates in our range
     for entry in response_breathing.get("br", []):
         try:
-            breathing_list += [None]*(dates_str_list.index(entry["dateTime"])-len(breathing_list))
-            breathing_list.append(entry["value"]["breathingRate"])
+            if entry["dateTime"] in dates_str_list:  # Only process if in our date range
+                breathing_list += [None]*(dates_str_list.index(entry["dateTime"])-len(breathing_list))
+                breathing_list.append(entry["value"]["breathingRate"])
         except (KeyError, ValueError):
             pass
     breathing_list += [None]*(len(dates_str_list)-len(breathing_list))
     
-    # Process Cardio Fitness Score data
+    # Process Cardio Fitness Score data - only include dates in our range
     for entry in response_cardio_fitness.get("cardioScore", []):
         try:
-            cardio_fitness_list += [None]*(dates_str_list.index(entry["dateTime"])-len(cardio_fitness_list))
-            vo2max_value = entry["value"]["vo2Max"]
-            
-            # Handle range values (e.g., "42-46") by taking the midpoint
-            if isinstance(vo2max_value, str) and '-' in vo2max_value:
-                parts = vo2max_value.split('-')
-                if len(parts) == 2:
-                    try:
-                        vo2max_value = (float(parts[0]) + float(parts[1])) / 2
-                    except:
-                        vo2max_value = float(parts[0])  # Use first value if conversion fails
-            
-            cardio_fitness_list.append(float(vo2max_value) if vo2max_value else None)
+            if entry["dateTime"] in dates_str_list:  # Only process if in our date range
+                cardio_fitness_list += [None]*(dates_str_list.index(entry["dateTime"])-len(cardio_fitness_list))
+                vo2max_value = entry["value"]["vo2Max"]
+                
+                # Handle range values (e.g., "42-46") by taking the midpoint
+                if isinstance(vo2max_value, str) and '-' in vo2max_value:
+                    parts = vo2max_value.split('-')
+                    if len(parts) == 2:
+                        try:
+                            vo2max_value = (float(parts[0]) + float(parts[1])) / 2
+                        except:
+                            vo2max_value = float(parts[0])  # Use first value if conversion fails
+                
+                cardio_fitness_list.append(float(vo2max_value) if vo2max_value else None)
         except (KeyError, ValueError, TypeError):
             pass
     cardio_fitness_list += [None]*(len(dates_str_list)-len(cardio_fitness_list))
     
-    # Process Temperature data
+    # Process Temperature data - only include dates in our range
     for entry in response_temperature.get("tempSkin", []):
         try:
-            temperature_list += [None]*(dates_str_list.index(entry["dateTime"])-len(temperature_list))
-            # Temperature value might be nested or direct
-            if isinstance(entry["value"], dict):
-                temperature_list.append(entry["value"].get("nightlyRelative", entry["value"].get("value")))
-            else:
-                temperature_list.append(entry["value"])
+            if entry["dateTime"] in dates_str_list:  # Only process if in our date range
+                temperature_list += [None]*(dates_str_list.index(entry["dateTime"])-len(temperature_list))
+                # Temperature value might be nested or direct
+                if isinstance(entry["value"], dict):
+                    temperature_list.append(entry["value"].get("nightlyRelative", entry["value"].get("value")))
+                else:
+                    temperature_list.append(entry["value"])
         except (KeyError, ValueError):
             pass
     temperature_list += [None]*(len(dates_str_list)-len(temperature_list))
@@ -1471,9 +1475,15 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     
     for name, arr in arrays_to_check.items():
         if len(arr) != expected_length:
-            print(f"⚠️ Array length mismatch: {name} has {len(arr)} items, expected {expected_length}. Padding...")
-            while len(arr) < expected_length:
-                arr.append(None)
+            if len(arr) > expected_length:
+                # Array too long - truncate
+                print(f"⚠️ Array length mismatch: {name} has {len(arr)} items, expected {expected_length}. Truncating...")
+                del arr[expected_length:]
+            else:
+                # Array too short - pad
+                print(f"⚠️ Array length mismatch: {name} has {len(arr)} items, expected {expected_length}. Padding...")
+                while len(arr) < expected_length:
+                    arr.append(None)
 
     df_merged = pd.DataFrame({
     "Date": dates_list,
