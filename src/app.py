@@ -282,17 +282,28 @@ app.layout = html.Div(children=[
         end_date=datetime.today().date() - timedelta(days=1),
         start_date=datetime.today().date() - timedelta(days=365)
         ),
-        html.Div(style={'font-size': '13px', 'color': '#4caf50', 'font-weight': 'bold', 'margin-top': '10px'}, 
-                 children="✨ Advanced Metrics (HRV, Breathing Rate, Temperature) enabled with smart caching"),
         html.Button(id='submit-button', type='submit', children='Submit', n_clicks=0, className="button-primary"),
-        html.Div(style={'display': 'flex', 'justify-content': 'center', 'gap': '10px', 'margin-top': '10px'}, children=[
-            html.Button("Login to FitBit", id="login-button"),
-            html.Button('Logout', id='logout-button', n_clicks=0, style={'background-color': '#dc3545', 'color': 'white'}),
+        html.Div(style={'display': 'flex', 'justify-content': 'center', 'gap': '10px', 'margin-top': '10px', 'align-items': 'center'}, children=[
+            html.Button("Login to FitBit", id="login-button", style={
+                'background-color': '#636efa', 'color': 'white', 'border': 'none',
+                'padding': '10px 20px', 'border-radius': '5px', 'cursor': 'pointer', 
+                'font-size': '14px', 'font-weight': 'bold', 'min-width': '140px'
+            }),
+            html.Button('Logout', id='logout-button', n_clicks=0, style={
+                'background-color': '#dc3545', 'color': 'white', 'border': 'none',
+                'padding': '10px 20px', 'border-radius': '5px', 'cursor': 'pointer',
+                'font-size': '14px', 'font-weight': 'bold', 'min-width': '140px'
+            }),
             html.Button("🗑️ Flush Cache", id="flush-cache-button-header", n_clicks=0, style={
                 'background-color': '#ff6b6b', 'color': 'white', 'border': 'none', 
-                'padding': '8px 16px', 'border-radius': '5px', 'cursor': 'pointer', 'font-size': '12px'
+                'padding': '10px 20px', 'border-radius': '5px', 'cursor': 'pointer', 
+                'font-size': '14px', 'font-weight': 'bold', 'min-width': '140px'
             }),
         ]),
+    ]),
+    html.Div(style={'text-align': 'center', 'margin-top': '15px', 'padding': '10px', 'background-color': '#e8f5e9', 'border-radius': '5px', 'max-width': '600px', 'margin-left': 'auto', 'margin-right': 'auto'}, children=[
+        html.Span("✨ Advanced Metrics (HRV, Breathing Rate, Temperature) enabled with smart caching", 
+                  style={'font-size': '13px', 'color': '#2e7d32', 'font-weight': 'bold'})
     ]),
     dcc.Location(id="location"),
     dcc.Store(id="oauth-token", storage_type='session'),  # Store OAuth token in session storage
@@ -1204,9 +1215,11 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
 
     for entry in response_weight["body-weight"]:
         # Convert kg to lbs (1 kg = 2.20462 lbs)
+        weight_list += [None]*(dates_str_list.index(entry['dateTime'])-len(weight_list))
         weight_kg = float(entry['value'])
         weight_lbs = round(weight_kg * 2.20462, 1)
         weight_list.append(weight_lbs)
+    weight_list += [None]*(len(dates_str_list)-len(weight_list))
     
     for entry in response_spo2:
         spo2_list += [None]*(dates_str_list.index(entry["dateTime"])-len(spo2_list))
