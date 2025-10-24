@@ -13,7 +13,7 @@ import plotly.express as px
 from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from cache_manager import FitbitCache
+from src.cache_manager import FitbitCache
 import threading
 import time
 from flask import jsonify, request, session, redirect as flask_redirect
