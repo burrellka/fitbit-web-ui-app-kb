@@ -683,8 +683,149 @@ def flush_cache_handler(n_clicks):
             return True, f"❌ Error flushing cache: {e}"
     return False, ""
 
-# Store for exercise data
+# Store for exercise and sleep detail data
 exercise_data_store = {}
+sleep_detail_data_store = {}
+
+@app.callback(
+    Output('workout-detail-display', 'children'),
+    Input('workout-date-selector', 'value'),
+    State('oauth-token', 'data')
+)
+def display_workout_details(selected_date, oauth_token):
+    """Display detailed workout information including HR zones for selected date"""
+    if not selected_date or not oauth_token:
+        return html.Div("Select a workout date to view details", style={'color': '#999', 'font-style': 'italic'})
+    
+    # Get stored activity data for the date
+    if selected_date not in exercise_data_store:
+        return html.Div(f"No workout data available for {selected_date}", style={'color': '#999'})
+    
+    activities = exercise_data_store[selected_date]
+    
+    # Build detailed display
+    details = []
+    for activity in activities:
+        # Activity header
+        details.append(html.Div(style={'background-color': '#f8f9fa', 'padding': '15px', 'border-radius': '10px', 'margin': '10px 0'}, children=[
+            html.H6(f"{activity.get('activityName', 'Activity')} - {activity.get('startTime', '')[:10]}", 
+                   style={'color': '#2c3e50', 'margin-bottom': '10px'}),
+            
+            # Stats grid
+            html.Div(style={'display': 'grid', 'grid-template-columns': 'repeat(auto-fit, minmax(150px, 1fr))', 'gap': '10px'}, children=[
+                html.Div([
+                    html.Strong("Duration: "),
+                    html.Span(f"{activity.get('duration', 0) // 60000} min")
+                ]),
+                html.Div([
+                    html.Strong("Calories: "),
+                    html.Span(f"{activity.get('calories', 0)} cal")
+                ]),
+                html.Div([
+                    html.Strong("Avg HR: "),
+                    html.Span(f"{activity.get('averageHeartRate', 'N/A')} bpm")
+                ]),
+                html.Div([
+                    html.Strong("Steps: "),
+                    html.Span(f"{activity.get('steps', 'N/A')}")
+                ]),
+                html.Div([
+                    html.Strong("Distance: "),
+                    html.Span(f"{round(activity.get('distance', 0) * 0.621371, 2)} mi" if activity.get('distance') else 'N/A')
+                ]),
+            ]),
+            
+            # HR Zones if available
+            html.Div(style={'margin-top': '15px'}, children=[
+                html.Strong("Heart Rate Zones:", style={'display': 'block', 'margin-bottom': '10px'}),
+                html.Div(style={'display': 'grid', 'grid-template-columns': 'repeat(auto-fit, minmax(120px, 1fr))', 'gap': '8px'}, children=[
+                    html.Div(style={'background-color': '#e8f5e9', 'padding': '8px', 'border-radius': '5px', 'text-align': 'center'}, children=[
+                        html.Div("Out of Range", style={'font-size': '11px', 'color': '#666'}),
+                        html.Div(f"{activity.get('heartRateZones', [{}])[0].get('minutes', 0)} min", style={'font-weight': 'bold', 'color': '#4caf50'})
+                    ]) if activity.get('heartRateZones') and len(activity.get('heartRateZones', [])) > 0 else html.Div(),
+                    html.Div(style={'background-color': '#fff9c4', 'padding': '8px', 'border-radius': '5px', 'text-align': 'center'}, children=[
+                        html.Div("Fat Burn", style={'font-size': '11px', 'color': '#666'}),
+                        html.Div(f"{activity.get('heartRateZones', [{}])[1].get('minutes', 0) if len(activity.get('heartRateZones', [])) > 1 else 0} min", style={'font-weight': 'bold', 'color': '#fbc02d'})
+                    ]) if activity.get('heartRateZones') and len(activity.get('heartRateZones', [])) > 1 else html.Div(),
+                    html.Div(style={'background-color': '#ffe0b2', 'padding': '8px', 'border-radius': '5px', 'text-align': 'center'}, children=[
+                        html.Div("Cardio", style={'font-size': '11px', 'color': '#666'}),
+                        html.Div(f"{activity.get('heartRateZones', [{}])[2].get('minutes', 0) if len(activity.get('heartRateZones', [])) > 2 else 0} min", style={'font-weight': 'bold', 'color': '#ff9800'})
+                    ]) if activity.get('heartRateZones') and len(activity.get('heartRateZones', [])) > 2 else html.Div(),
+                    html.Div(style={'background-color': '#ffcdd2', 'padding': '8px', 'border-radius': '5px', 'text-align': 'center'}, children=[
+                        html.Div("Peak", style={'font-size': '11px', 'color': '#666'}),
+                        html.Div(f"{activity.get('heartRateZones', [{}])[3].get('minutes', 0) if len(activity.get('heartRateZones', [])) > 3 else 0} min", style={'font-weight': 'bold', 'color': '#f44336'})
+                    ]) if activity.get('heartRateZones') and len(activity.get('heartRateZones', [])) > 3 else html.Div(),
+                ])
+            ]) if activity.get('heartRateZones') else html.Div("HR zone data not available", style={'color': '#999', 'font-style': 'italic', 'margin-top': '10px'})
+        ]))
+    
+    return html.Div(details)
+
+@app.callback(
+    Output('sleep-detail-display', 'children'),
+    Input('sleep-date-selector', 'value'),
+    State('oauth-token', 'data')
+)
+def display_sleep_details(selected_date, oauth_token):
+    """Display detailed sleep information including stages timeline for selected date"""
+    if not selected_date or not oauth_token:
+        return html.Div("Select a sleep date to view details", style={'color': '#999', 'font-style': 'italic'})
+    
+    # Get stored sleep data for the date
+    if selected_date not in sleep_detail_data_store:
+        return html.Div(f"No sleep data available for {selected_date}", style={'color': '#999'})
+    
+    sleep_data = sleep_detail_data_store[selected_date]
+    
+    # Build detailed display
+    return html.Div(style={'background-color': '#f8f9fa', 'padding': '20px', 'border-radius': '10px'}, children=[
+        html.H6(f"Sleep Night: {selected_date}", style={'color': '#2c3e50', 'margin-bottom': '15px'}),
+        
+        # Summary stats
+        html.Div(style={'display': 'grid', 'grid-template-columns': 'repeat(auto-fit, minmax(150px, 1fr))', 'gap': '10px', 'margin-bottom': '20px'}, children=[
+            html.Div([
+                html.Strong("Sleep Score: "),
+                html.Span(f"{sleep_data.get('sleep_score', 'N/A')}", style={'color': '#4caf50', 'font-size': '18px', 'font-weight': 'bold'})
+            ]),
+            html.Div([
+                html.Strong("Total Sleep: "),
+                html.Span(f"{sleep_data.get('total_sleep', 0) // 60}h {sleep_data.get('total_sleep', 0) % 60}m")
+            ]),
+            html.Div([
+                html.Strong("Sleep Start: "),
+                html.Span(f"{sleep_data.get('start_time', 'N/A')}"[:5] if sleep_data.get('start_time') else 'N/A')
+            ]),
+        ]),
+        
+        # Sleep stages breakdown
+        html.Div(style={'margin-top': '20px'}, children=[
+            html.Strong("Sleep Stages:", style={'display': 'block', 'margin-bottom': '10px'}),
+            html.Div(style={'display': 'grid', 'grid-template-columns': 'repeat(auto-fit, minmax(100px, 1fr))', 'gap': '8px'}, children=[
+                html.Div(style={'background-color': '#084466', 'color': 'white', 'padding': '10px', 'border-radius': '5px', 'text-align': 'center'}, children=[
+                    html.Div("Deep", style={'font-size': '12px', 'margin-bottom': '5px'}),
+                    html.Div(f"{sleep_data.get('deep', 0)} min", style={'font-weight': 'bold', 'font-size': '16px'})
+                ]),
+                html.Div(style={'background-color': '#1e9ad6', 'color': 'white', 'padding': '10px', 'border-radius': '5px', 'text-align': 'center'}, children=[
+                    html.Div("Light", style={'font-size': '12px', 'margin-bottom': '5px'}),
+                    html.Div(f"{sleep_data.get('light', 0)} min", style={'font-weight': 'bold', 'font-size': '16px'})
+                ]),
+                html.Div(style={'background-color': '#4cc5da', 'color': 'white', 'padding': '10px', 'border-radius': '5px', 'text-align': 'center'}, children=[
+                    html.Div("REM", style={'font-size': '12px', 'margin-bottom': '5px'}),
+                    html.Div(f"{sleep_data.get('rem', 0)} min", style={'font-weight': 'bold', 'font-size': '16px'})
+                ]),
+                html.Div(style={'background-color': '#fd7676', 'color': 'white', 'padding': '10px', 'border-radius': '5px', 'text-align': 'center'}, children=[
+                    html.Div("Awake", style={'font-size': '12px', 'margin-bottom': '5px'}),
+                    html.Div(f"{sleep_data.get('wake', 0)} min", style={'font-weight': 'bold', 'font-size': '16px'})
+                ]),
+            ])
+        ]),
+        
+        # Efficiency
+        html.Div(style={'margin-top': '20px', 'padding': '10px', 'background-color': '#e8f5e9', 'border-radius': '5px'}, children=[
+            html.Strong("Sleep Efficiency: "),
+            html.Span(f"{sleep_data.get('efficiency', 'N/A')}%", style={'color': '#4caf50', 'font-weight': 'bold', 'font-size': '16px'})
+        ]) if sleep_data.get('efficiency') else html.Div()
+    ])
 
 @app.callback(
     Output('exercise_log_table', 'children', allow_duplicate=True),
@@ -1201,14 +1342,26 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                     
                     sleep_record_dict[sleep_record['dateOfSleep']] = {
                         'deep': sleep_record['levels']['summary']['deep']['minutes'],
-                                                                    'light': sleep_record['levels']['summary']['light']['minutes'],
-                                                                    'rem': sleep_record['levels']['summary']['rem']['minutes'],
-                                                                    'wake': sleep_record['levels']['summary']['wake']['minutes'],
-                                                                    'total_sleep': sleep_record["minutesAsleep"],
+                        'light': sleep_record['levels']['summary']['light']['minutes'],
+                        'rem': sleep_record['levels']['summary']['rem']['minutes'],
+                        'wake': sleep_record['levels']['summary']['wake']['minutes'],
+                        'total_sleep': sleep_record["minutesAsleep"],
                         'start_time_seconds': (sleep_time_of_day.hour * 3600) + (sleep_time_of_day.minute * 60) + sleep_time_of_day.second,
                         'sleep_score': sleep_score,  # Fitbit's actual sleep score from sleepScore.overall
                         'sleep_record': sleep_record  # Store full record for drill-down
-                                                                    }
+                    }
+                    
+                    # Store in global dict for callback access
+                    sleep_detail_data_store[sleep_record['dateOfSleep']] = {
+                        'deep': sleep_record['levels']['summary']['deep']['minutes'],
+                        'light': sleep_record['levels']['summary']['light']['minutes'],
+                        'rem': sleep_record['levels']['summary']['rem']['minutes'],
+                        'wake': sleep_record['levels']['summary']['wake']['minutes'],
+                        'total_sleep': sleep_record["minutesAsleep"],
+                        'start_time': sleep_record.get('startTime', ''),
+                        'sleep_score': sleep_score,
+                        'efficiency': sleep_record.get('efficiency')
+                    }
                 except KeyError as E:
                     pass
 
@@ -1429,6 +1582,11 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                     activities_by_date[activity_date] = []
                     workout_dates_for_dropdown.append({'label': f"{activity_date} - {activity_name}", 'value': activity_date})
                 activities_by_date[activity_date].append(activity)
+                
+                # Store in global dict for callback access
+                if activity_date not in exercise_data_store:
+                    exercise_data_store[activity_date] = []
+                exercise_data_store[activity_date].append(activity)
         except:
             pass
     
