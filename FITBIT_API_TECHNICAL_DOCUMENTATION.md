@@ -678,30 +678,45 @@ These endpoints provide **minute-by-minute** or **second-by-second** data. Not c
 
 ### Cache Logic:
 
-**Sleep & Advanced Metrics**: **Cache-First**
+**All Metrics**: **Cache-First with Today Auto-Refresh**
 ```python
 # Check cache first
 cached_data = cache.get_sleep_data(date)
 if cached_data:
-    # Use cached data, 0 API calls
+    if date == today:
+        # Always refresh today for real-time stats
+        fetch_and_cache(date)
+    else:
+        # Use cached data, 0 API calls
 else:
     # Fetch from API, then cache
+    fetch_and_cache(date)
 ```
 
-**Daily Metrics**: **Cache-on-Write**
-```python
-# Fetch from API (using efficient range endpoint)
-response = api.get_heart_rate(start_date, end_date)
+**Background Cache Builder**: 3-Phase Hourly Strategy
+- **Auto-launches on login** (also available via "Start Cache" button)
+- **Runs hourly** with ~125 API calls per cycle
+- **Respects rate limits**: Pauses for 1 hour if 429 error encountered
 
-# Cache immediately after fetching
-for entry in response:
-    cache.set_daily_metrics(date=entry['date'], rhr=entry['rhr'])
-```
+**Phase 1: Range-Based Endpoints** (~9 calls for entire history)
+- Heart Rate, Steps, Weight, SpO2, Calories, Distance, Floors, AZM, Activities
+- Pulls 365 days in single API calls per metric
+- Runs once, data cached forever unless flushed
 
-**Background Builder**: Manual trigger via "Start Cache" button
-- Backfills last 90 days of sleep data
-- Respects rate limits (pauses on 429 errors)
-- Runs continuously until container restart
+**Phase 2: Cardio Fitness** (30-day blocks)
+- Fetches VO2 Max in 30-day chunks
+- Works backward from today
+- Only fetches missing blocks
+
+**Phase 3: Daily Endpoints** (7-day blocks, 28 calls per block)
+- Sleep, HRV, Breathing Rate, Temperature
+- 4 API calls per day (1 per metric)
+- Works backward from today
+- Most expensive, hence smaller blocks
+
+**Looping**: After Phase 1, alternates between Phase 2 and Phase 3 until API budget exhausted or all data cached.
+
+**First Run of New Day**: Refreshes yesterday's daily metrics (sleep, HRV, BR, temp) to ensure completeness, as these metrics finalize late.
 
 ---
 
