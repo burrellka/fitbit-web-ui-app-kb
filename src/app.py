@@ -275,22 +275,26 @@ def background_cache_builder(access_token: str):
                                             sleep_score = sleep_record['sleepScore'].get('overall')
                                         # DO NOT fallback to efficiency - they are different metrics!
                                         
+                                        # Cache sleep data even if sleep_score is None (stages, duration still valuable!)
                                         if sleep_score is not None:
                                             print(f"✅ YESTERDAY REFRESH - Found REAL sleep score for {yesterday}: {sleep_score}")
-                                            cache.set_sleep_score(
-                                                date=yesterday,
-                                                sleep_score=sleep_score,
-                                                efficiency=sleep_record.get('efficiency'),
-                                                total_sleep=sleep_record.get('minutesAsleep'),
-                                                deep=sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes'),
-                                                light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
-                                                rem=sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes'),
-                                                wake=sleep_record.get('levels', {}).get('summary', {}).get('wake', {}).get('minutes'),
-                                                start_time=sleep_record.get('startTime'),
-                                                sleep_data_json=str(sleep_record)
-                                            )
-                                            yesterday_success += 1
-                                            print(f"✅ Yesterday's Sleep cached")
+                                        else:
+                                            print(f"⚠️ YESTERDAY REFRESH - No sleep score for {yesterday}, but caching stages/duration")
+                                        
+                                        cache.set_sleep_score(
+                                            date=yesterday,
+                                            sleep_score=sleep_score,  # Can be None - that's OK!
+                                            efficiency=sleep_record.get('efficiency'),
+                                            total_sleep=sleep_record.get('minutesAsleep'),
+                                            deep=sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes'),
+                                            light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
+                                            rem=sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes'),
+                                            wake=sleep_record.get('levels', {}).get('summary', {}).get('wake', {}).get('minutes'),
+                                            start_time=sleep_record.get('startTime'),
+                                            sleep_data_json=str(sleep_record)
+                                        )
+                                        yesterday_success += 1
+                                        print(f"✅ Yesterday's Sleep cached")
                             
                             elif metric_name == "HRV" and 'hrv' in data:
                                 for hrv_entry in data['hrv']:
@@ -467,20 +471,24 @@ def background_cache_builder(access_token: str):
                                                 sleep_score = sleep_record['sleepScore'].get('overall')
                                             # DO NOT fallback to efficiency - they are different metrics!
                                             
+                                            # Cache sleep data even if sleep_score is None (stages, duration still valuable!)
                                             if sleep_score is not None:
                                                 print(f"✅ PHASE 3 - Found REAL sleep score for {date_str}: {sleep_score}")
-                                                cache.set_sleep_score(
-                                                    date=date_str,
-                                                    sleep_score=sleep_score,
-                                                    efficiency=sleep_record.get('efficiency'),
-                                                    total_sleep=sleep_record.get('minutesAsleep'),
-                                                    deep=sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes'),
-                                                    light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
-                                                    rem=sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes'),
-                                                    wake=sleep_record.get('levels', {}).get('summary', {}).get('wake', {}).get('minutes'),
-                                                    start_time=sleep_record.get('startTime'),
-                                                    sleep_data_json=str(sleep_record)
-                                                )
+                                            else:
+                                                print(f"⚠️ PHASE 3 - No sleep score for {date_str}, but caching stages/duration")
+                                            
+                                            cache.set_sleep_score(
+                                                date=date_str,
+                                                sleep_score=sleep_score,  # Can be None - that's OK!
+                                                efficiency=sleep_record.get('efficiency'),
+                                                total_sleep=sleep_record.get('minutesAsleep'),
+                                                deep=sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes'),
+                                                light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
+                                                rem=sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes'),
+                                                wake=sleep_record.get('levels', {}).get('summary', {}).get('wake', {}).get('minutes'),
+                                                start_time=sleep_record.get('startTime'),
+                                                sleep_data_json=str(sleep_record)
+                                            )
                                             break
                                 
                                 elif metric_name == "HRV" and "hrv" in data and len(data["hrv"]) > 0:
