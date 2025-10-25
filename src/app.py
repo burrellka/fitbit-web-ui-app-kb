@@ -2329,7 +2329,11 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             all_cached = False
             missing_dates.append(date_str)
     
-    if all_cached:
+    # 🚨 CRITICAL: Always refresh TODAY's data if it's in the range
+    today = datetime.now().strftime('%Y-%m-%d')
+    refresh_today = today in dates_str_list
+    
+    if all_cached and not refresh_today:
         print(f"✅ 100% CACHED! Serving report from cache (0 API calls)")
         # Skip ALL API calls - serve directly from cache
         # We'll still need to populate the response structures from cache below
@@ -2338,7 +2342,13 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         response_steps = {"activities-steps": []}
         response_weight = {"weight": []}
         response_spo2 = []
-    else:
+    elif all_cached and refresh_today:
+        print(f"🔄 Cache complete BUT refreshing TODAY ({today}) for real-time data...")
+        # Refresh today's data, but serve the rest from cache
+        missing_dates = [today]
+        all_cached = False  # Force API calls for today only
+    
+    if not all_cached:
         print(f"📥 Cache incomplete - {len(missing_dates)} days missing. Fetching from API...")
         print(f"Missing dates: {missing_dates[:5]}{'...' if len(missing_dates) > 5 else ''}")
         
@@ -3573,8 +3583,17 @@ def api_cache_refresh(date):
 
 @server.route('/api/data/sleep/<date>', methods=['GET'])
 def api_get_sleep_data(date):
-    """Get sleep data for a specific date from cache"""
+    """Get sleep data for a specific date from cache (refreshes today's data)"""
     try:
+        # 🚨 CRITICAL: Always refresh TODAY's data for real-time stats
+        today = datetime.now().strftime('%Y-%m-%d')
+        if date == today:
+            print(f"🔄 MCP API: Refreshing TODAY's sleep data ({date})...")
+            oauth_token = session.get('oauth_token')
+            if oauth_token:
+                headers = {"Authorization": f"Bearer {oauth_token}", "Accept": "application/json"}
+                populate_sleep_score_cache([date], headers, force_refresh=True)
+        
         sleep_data = cache.get_sleep_data(date)
         if sleep_data:
             return jsonify({
@@ -3592,16 +3611,29 @@ def api_get_sleep_data(date):
 
 @server.route('/api/data/metrics/<date>', methods=['GET'])
 def api_get_metrics(date):
-    """Get all cached metrics for a specific date"""
+    """Get all cached metrics for a specific date (refreshes today's data)"""
     try:
+        # 🚨 CRITICAL: Always refresh TODAY's data for real-time stats
+        today = datetime.now().strftime('%Y-%m-%d')
+        if date == today:
+            print(f"🔄 MCP API: Refreshing TODAY's metrics ({date})...")
+            oauth_token = session.get('oauth_token')
+            if oauth_token:
+                headers = {"Authorization": f"Bearer {oauth_token}", "Accept": "application/json"}
+                # Refresh sleep data
+                populate_sleep_score_cache([date], headers, force_refresh=True)
+                # Note: Advanced metrics (HRV, BR, Temp) will be refreshed by background builder
+        
         sleep_data = cache.get_sleep_data(date)
         advanced_metrics = cache.get_advanced_metrics(date)
+        daily_metrics = cache.get_daily_metrics(date)
         
         return jsonify({
             'success': True,
             'date': date,
             'sleep': sleep_data,
-            'advanced_metrics': advanced_metrics
+            'advanced_metrics': advanced_metrics,
+            'daily_metrics': daily_metrics
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
