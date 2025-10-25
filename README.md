@@ -86,9 +86,24 @@
 
 [Demo website on Render](https://fitbit-api-web-ui.onrender.com/) or [Self Hosted on my Server](https://fitbit-report.arpan.app/) (Use this if the Render page is down)
 
-## Preview of Data
+## 📸 Screenshots - Enhanced Edition
 
-![screenshot](https://github.com/arpanghosh8453/fitbit-web-ui-app/blob/main/help/Fitbit_Wellness_Report_Final_v2.jpg)
+### Dashboard Overview
+![Dashboard Header and Core Metrics](help/enhanced-screenshots/Fitbit%20Wellness%20Report-images-0.jpg)
+
+### Sleep Analysis & Exercise Tracking
+![Sleep Quality and Exercise Log](help/enhanced-screenshots/Fitbit%20Wellness%20Report-images-1.jpg)
+
+### Advanced Metrics (HRV, Breathing Rate, Temperature)
+![Advanced Health Metrics](help/enhanced-screenshots/Fitbit%20Wellness%20Report-images-2.jpg)
+
+### Correlation Analysis & Insights
+![Exercise-Sleep Correlations](help/enhanced-screenshots/Fitbit%20Wellness%20Report-images-3.jpg)
+
+### Detailed Visualizations
+![Charts and Trends](help/enhanced-screenshots/Fitbit%20Wellness%20Report-images-4.jpg)
+
+> **Note**: These screenshots showcase the enhanced edition with OAuth, caching, and MCP API integration. Your actual dashboard may vary based on your data and configuration.
 
 ## Self-Hosting with Docker Compose (OAuth Enabled)
 
