@@ -66,6 +66,22 @@
 - **Interactive Scatter Plots** - Visualize exercise intensity vs. sleep duration with trendlines
 - **Comparative Metrics** - See average sleep on workout days vs. rest days
 
+### 🚀 Intelligent Caching System 🆕
+- **Hourly Background Builder** - Automatically fetches and caches historical data every hour
+- **3-Phase Strategy** - Efficiently fills 365 days of data using ~125 API calls per hour
+- **Real-Time Today Refresh** - Always fetches fresh data for today when generating reports or via API
+- **Zero API Calls for Historical Data** - Serves past dates from cache instantly
+- **Smart Cache Management** - Manual "Start Cache" button, "Flush Cache" for troubleshooting
+- **Persistent Storage** - SQLite database survives container restarts
+- **Cache Status Display** - Real-time visibility into what's cached and what's building
+
+### 🔌 MCP Server Ready 🆕
+- **RESTful API Endpoints** - Full API for LLM integration via Model Context Protocol (MCP)
+- **Smart Data Retrieval** - GET endpoints for sleep, metrics, exercise, and activities
+- **Cache Management API** - Endpoints for cache status, flush, and manual refresh
+- **Today Auto-Refresh** - API automatically refreshes today's data for real-time stats
+- **Authentication Preserved** - Uses stored OAuth tokens for secure API access
+
 ## Try it out
 
 [Demo website on Render](https://fitbit-api-web-ui.onrender.com/) or [Self Hosted on my Server](https://fitbit-report.arpan.app/) (Use this if the Render page is down)
@@ -129,6 +145,7 @@ services:
       - CLIENT_ID=${CLIENT_ID}
       - CLIENT_SECRET=${CLIENT_SECRET}
       - REDIRECT_URL=${REDIRECT_URL:-http://192.168.13.5:5032/}
+      - TZ=America/New_York  # Set your timezone (e.g., America/Chicago, America/Los_Angeles, Europe/London)
 ```
 
 ## Legacy Self-Hosting (Manual Token Entry)

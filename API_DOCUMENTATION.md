@@ -20,6 +20,34 @@ https://your-domain.com
 
 ---
 
+## Configuration
+
+### Timezone Setup
+
+To ensure accurate timestamps in logs and cache status, set the `TZ` environment variable in your `docker-compose.yml`:
+
+```yaml
+environment:
+  - TZ=America/New_York  # or your timezone
+```
+
+**Common Timezones:**
+- `America/New_York` (EST/EDT)
+- `America/Chicago` (CST/CDT)
+- `America/Los_Angeles` (PST/PDT)
+- `Europe/London` (GMT/BST)
+- `Asia/Tokyo` (JST)
+
+Without this setting, the container defaults to UTC, which may cause confusion when viewing cache status timestamps.
+
+### Authentication
+
+All API endpoints (except `/api/health`) require an active OAuth session. The API uses the stored OAuth refresh token to authenticate requests automatically.
+
+**Security Note:** The API endpoints are designed for internal/localhost use. For production deployments with public API access, implement additional authentication (API keys, OAuth, etc.).
+
+---
+
 ## Endpoints
 
 ### 1. Health Check
@@ -76,10 +104,12 @@ curl http://localhost:5032/api/cache/status
 
 **GET** `/api/data/sleep/<date>`
 
-Retrieve cached sleep data for a specific date.
+Retrieve sleep data for a specific date.
+
+**🔄 Real-Time Behavior:** If `date` is today, automatically refreshes data from Fitbit API before returning, ensuring real-time stats.
 
 **Parameters:**
-- `date` (path): Date in YYYY-MM-DD format
+- `date` (path): Date in YYYY-MM-DD format (e.g., `2025-10-22` or `today`)
 
 **Response (Success):**
 ```json
@@ -168,10 +198,12 @@ curl http://localhost:5032/api/data/exercise/2025-10-22
 
 **GET** `/api/data/metrics/<date>`
 
-Retrieve all cached metrics (sleep + advanced) for a specific date.
+Retrieve all metrics (sleep, HRV, breathing rate, temperature, daily metrics) for a specific date.
+
+**🔄 Real-Time Behavior:** If `date` is today, automatically refreshes sleep data from Fitbit API before returning, ensuring real-time stats.
 
 **Parameters:**
-- `date` (path): Date in YYYY-MM-DD format
+- `date` (path): Date in YYYY-MM-DD format (e.g., `2025-10-22` or `today`)
 
 **Response:**
 ```json
@@ -336,14 +368,15 @@ The API itself has no rate limits, but remember that:
 ## Future Enhancements
 
 Planned API additions:
-- ✅ GET `/api/data/sleep/<date>` - Implemented
-- ✅ GET `/api/data/metrics/<date>` - Implemented
-- ⏳ GET `/api/data/exercise/<date>` - Planned
-- ⏳ GET `/api/data/heartrate/<date>` - Planned
-- ⏳ POST `/api/cache/flush` - Planned
-- ⏳ GET `/api/insights/summary` - AI-generated insights
-- ⏳ GET `/api/trends/sleep` - Sleep trend analysis
-- ⏳ GET `/api/trends/fitness` - Fitness trend analysis
+- ✅ GET `/api/data/sleep/<date>` - Implemented (with today auto-refresh)
+- ✅ GET `/api/data/metrics/<date>` - Implemented (with today auto-refresh)
+- ✅ GET `/api/data/exercise/<date>` - Implemented
+- ✅ GET `/api/cache/status` - Implemented
+- ✅ POST `/api/cache/flush` - Implemented
+- ✅ POST `/api/cache/refresh/<date>` - Implemented
+- ⏳ GET `/api/insights/summary` - Planned (AI-generated insights)
+- ⏳ GET `/api/trends/sleep` - Planned (Sleep trend analysis)
+- ⏳ GET `/api/trends/fitness` - Planned (Fitness trend analysis)
 
 ---
 
