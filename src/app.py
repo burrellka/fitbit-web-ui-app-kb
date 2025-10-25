@@ -1006,6 +1006,16 @@ app.layout = html.Div(children=[
         ),
         html.Div(id='spo2_table', style={'max-width': '1200px', 'margin': 'auto', 'font-weight': 'bold'}, children=[]),
         html.Div(style={"height": '40px'}),
+        
+        html.H4("Oxygen Variation (EOV) 🫁", style={'font-weight': 'bold'}),
+        html.H6("EOV (Estimated Oxygen Variation) measures fluctuations in blood oxygen levels during sleep. Higher EOV scores may indicate breathing disturbances or sleep apnea. Lower, more stable scores indicate healthier breathing patterns."),
+        dcc.Graph(
+            id='graph_eov',
+            figure=px.line(),
+            config= {'displaylogo': False}
+        ),
+        html.Div(id='eov_table', style={'max-width': '1200px', 'margin': 'auto', 'font-weight': 'bold'}, children=[]),
+        html.Div(style={"height": '40px'}),
         html.H4("Heart Rate Variability (HRV) 💗", style={'font-weight': 'bold'}),
         html.H6("Heart Rate Variability measures the variation in time between heartbeats. Higher HRV generally indicates better cardiovascular fitness and stress resilience. HRV is measured in milliseconds (ms) and varies by age, fitness level, and individual factors."),
         dcc.Graph(
@@ -1435,6 +1445,140 @@ def display_workout_details(selected_date, oauth_token):
     
     activities = exercise_data_store[selected_date]
     
+    # Helper function to fetch and create intraday HR chart
+    def create_intraday_hr_chart(activity, oauth_token):
+        """Fetch intraday HR data and create line chart with zone backgrounds"""
+        import plotly.graph_objects as go
+        from datetime import datetime
+        import requests
+        
+        # Get activity details
+        log_id = activity.get('logId')
+        start_time = activity.get('startTime')
+        duration_ms = activity.get('duration', 0)
+        
+        if not log_id or not start_time or duration_ms == 0:
+            return None
+        
+        try:
+            # Parse start time and calculate end time
+            start_dt = datetime.fromisoformat(start_time.replace('Z', ''))
+            date_str = start_dt.strftime('%Y-%m-%d')
+            
+            # Fetch intraday heart rate data
+            headers = {'Authorization': f'Bearer {oauth_token}'}
+            url = f"https://api.fitbit.com/1/user/-/activities/heart/date/{date_str}/1d/1sec.json"
+            response = requests.get(url, headers=headers)
+            
+            if response.status_code != 200:
+                print(f"⚠️ Failed to fetch intraday HR for activity {log_id}: {response.status_code}")
+                return None
+            
+            data = response.json()
+            intraday_data = data.get('activities-heart-intraday', {}).get('dataset', [])
+            
+            if not intraday_data:
+                return None
+            
+            # Filter data to activity time window
+            activity_start = start_dt.time()
+            activity_end_seconds = (start_dt.hour * 3600 + start_dt.minute * 60 + start_dt.second) + (duration_ms / 1000)
+            
+            times = []
+            hr_values = []
+            
+            for entry in intraday_data:
+                entry_time_str = entry.get('time', '')
+                entry_hr = entry.get('value', 0)
+                
+                if entry_hr > 0:
+                    # Parse time (HH:MM:SS format)
+                    time_parts = entry_time_str.split(':')
+                    if len(time_parts) == 3:
+                        entry_seconds = int(time_parts[0]) * 3600 + int(time_parts[1]) * 60 + int(time_parts[2])
+                        start_seconds = activity_start.hour * 3600 + activity_start.minute * 60 + activity_start.second
+                        
+                        # Check if within activity window (with 5min buffer on each side)
+                        if start_seconds - 300 <= entry_seconds <= activity_end_seconds + 300:
+                            # Calculate relative time in minutes from activity start
+                            relative_time = (entry_seconds - start_seconds) / 60
+                            times.append(relative_time)
+                            hr_values.append(entry_hr)
+            
+            if not times:
+                return None
+            
+            # Get HR zones for background shading
+            hr_zones = activity.get('heartRateZones', [])
+            zone_ranges = {}
+            for zone in hr_zones:
+                zone_name = zone.get('name', '')
+                zone_ranges[zone_name] = {
+                    'min': zone.get('min', 0),
+                    'max': zone.get('max', 220),
+                    'color': {
+                        'Out of Range': 'rgba(144, 202, 249, 0.15)',
+                        'Fat Burn': 'rgba(255, 213, 79, 0.15)',
+                        'Cardio': 'rgba(255, 152, 0, 0.15)',
+                        'Peak': 'rgba(244, 67, 54, 0.15)'
+                    }.get(zone_name, 'rgba(200, 200, 200, 0.1)')
+                }
+            
+            # Create figure
+            fig = go.Figure()
+            
+            # Add zone backgrounds (rectangles)
+            for zone_name, zone_info in zone_ranges.items():
+                if zone_name != 'Out of Range':  # Skip out of range to avoid cluttering
+                    fig.add_hrect(
+                        y0=zone_info['min'],
+                        y1=zone_info['max'],
+                        fillcolor=zone_info['color'],
+                        layer="below",
+                        line_width=0,
+                        annotation_text=zone_name,
+                        annotation_position="right",
+                        annotation=dict(font_size=10, font_color="#666")
+                    )
+            
+            # Add HR line trace
+            fig.add_trace(go.Scatter(
+                x=times,
+                y=hr_values,
+                mode='lines',
+                line=dict(color='#e74c3c', width=2),
+                name='Heart Rate',
+                hovertemplate='<b>Time:</b> +%{x:.1f} min<br><b>HR:</b> %{y} bpm<extra></extra>'
+            ))
+            
+            # Update layout
+            fig.update_layout(
+                title=dict(text="<b>Heart Rate Progression During Workout</b><br><sup>With heart rate zone backgrounds</sup>", 
+                          font=dict(size=14)),
+                xaxis=dict(
+                    title="Time (minutes from start)",
+                    gridcolor='#f0f0f0',
+                    showgrid=True
+                ),
+                yaxis=dict(
+                    title="Heart Rate (bpm)",
+                    gridcolor='#f0f0f0',
+                    showgrid=True
+                ),
+                height=350,
+                margin=dict(l=60, r=60, t=60, b=50),
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                hovermode='closest',
+                showlegend=False
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"⚠️ Error creating intraday HR chart: {e}")
+            return None
+    
     # Helper function to create HR zones chart
     def create_hr_zones_chart(activity):
         """Create a chart showing heart rate zones distribution"""
@@ -1566,6 +1710,11 @@ def display_workout_details(selected_date, oauth_token):
                 ])
             ]) if activity.get('heartRateZones') else html.Div("HR zone data not available", style={'color': '#999', 'font-style': 'italic', 'margin-top': '10px'}),
             
+            # Add Intraday HR Line Chart (with zone backgrounds)
+            html.Div(style={'margin-top': '25px'}, children=[
+                dcc.Graph(figure=create_intraday_hr_chart(activity, oauth_token), config={'displayModeBar': False}) if create_intraday_hr_chart(activity, oauth_token) else html.Div("Intraday HR data not available (requires Personal scope)", style={'color': '#999', 'font-style': 'italic', 'text-align': 'center', 'padding': '20px', 'background-color': '#fff3cd', 'border-radius': '5px', 'border': '1px solid #ffeaa7'})
+            ]),
+            
             # Add HR Zones Chart
             html.Div(style={'margin-top': '25px'}, children=[
                 dcc.Graph(figure=create_hr_zones_chart(activity), config={'displayModeBar': False}) if create_hr_zones_chart(activity) else html.Div("HR zone chart not available", style={'color': '#999', 'font-style': 'italic', 'text-align': 'center'})
@@ -1632,44 +1781,61 @@ def display_sleep_details(selected_date, oauth_token):
                     'awake': 'Awake'
                 }
                 
-                # Create Gantt-style timeline using Plotly
+                # Create horizontal stacked bar timeline using Plotly
                 fig_timeline = go.Figure()
                 
-                for entry in stages_data:
+                # Build continuous timeline segments
+                for idx, entry in enumerate(stages_data):
                     stage = entry.get('level', '').lower()
                     start_time = datetime.fromisoformat(entry['dateTime'].replace('Z', '+00:00'))
                     duration_seconds = entry.get('seconds', 0)
                     end_time = start_time + timedelta(seconds=duration_seconds)
+                    duration_minutes = duration_seconds / 60
                     
-                    # Add bar for this sleep stage segment
-                    fig_timeline.add_trace(go.Scatter(
-                        x=[start_time, end_time],
-                        y=[1, 1],
-                        mode='lines',
-                        line=dict(color=stage_colors.get(stage, '#ccc'), width=20),
+                    # Create a horizontal bar for this stage
+                    fig_timeline.add_trace(go.Bar(
+                        x=[duration_minutes],
+                        y=["Sleep Stages"],
+                        orientation='h',
+                        marker=dict(
+                            color=stage_colors.get(stage, '#ccc'),
+                            line=dict(width=0)
+                        ),
+                        name=stage_names.get(stage, stage),
                         hovertemplate=f"<b>{stage_names.get(stage, stage)}</b><br>" +
                                       f"Start: {start_time.strftime('%I:%M %p')}<br>" +
-                                      f"Duration: {duration_seconds // 60} min<br>" +
+                                      f"Duration: {int(duration_minutes)} min<br>" +
                                       "<extra></extra>",
-                        showlegend=False
+                        showlegend=(idx == 0 or stage != stages_data[idx-1].get('level', '').lower()),
+                        legendgroup=stage
                     ))
                 
                 fig_timeline.update_layout(
-                    title=dict(text="Chronological Sleep Timeline", font=dict(size=16)),
+                    title=dict(text="<b>Chronological Sleep Timeline</b><br><sup>Minute-by-minute transitions between sleep stages</sup>", 
+                              font=dict(size=14)),
                     xaxis=dict(
-                        title="Time",
-                        tickformat='%I:%M %p',
-                        gridcolor='#f0f0f0'
+                        title="Duration (minutes)",
+                        gridcolor='#f0f0f0',
+                        showgrid=True
                     ),
                     yaxis=dict(
-                        visible=False,
-                        range=[0.5, 1.5]
+                        showticklabels=False,
+                        showgrid=False
                     ),
-                    height=200,
-                    margin=dict(l=50, r=50, t=50, b=50),
+                    barmode='stack',
+                    height=180,
+                    margin=dict(l=10, r=10, t=60, b=40),
                     plot_bgcolor='white',
                     paper_bgcolor='white',
-                    hovermode='closest'
+                    hovermode='closest',
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=-0.3,
+                        xanchor="center",
+                        x=0.5,
+                        title=dict(text="")
+                    )
                 )
                 
                 timeline_figure = fig_timeline
@@ -2016,7 +2182,7 @@ def disable_button_and_calculate(n_clicks, oauth_token, refresh_token, token_exp
     return False, True, True
 
 # Fetch data and update graphs on click of submit
-@app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_sleep', 'figure'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise-type-filter', 'options'), Output('exercise_log_table', 'children'), Output('workout-date-selector', 'options'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('sleep-date-selector', 'options'), Output('graph_exercise_sleep_correlation', 'figure'), Output('graph_azm_sleep_correlation', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
+@app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_eov', 'figure'), Output('eov_table', 'children'), Output('graph_sleep', 'figure'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise-type-filter', 'options'), Output('exercise_log_table', 'children'), Output('workout-date-selector', 'options'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('sleep-date-selector', 'options'), Output('graph_exercise_sleep_correlation', 'figure'), Output('graph_azm_sleep_correlation', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
 Input('submit-button', 'disabled'),
 State('my-date-picker-range', 'start_date'), State('my-date-picker-range', 'end_date'), State('oauth-token', 'data'),
 prevent_initial_call=True)
@@ -2085,7 +2251,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                     # Return with error message (44 outputs total)
                     empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
                     empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
-                    return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), px.scatter(), html.P("Rate limit exceeded"), ""
+                    return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.line(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), px.scatter(), html.P("Rate limit exceeded"), ""
                 else:
                     print(f"API Error: {user_profile['error']}")
                     
@@ -2099,7 +2265,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                     print("Please wait at least 1 hour before generating another report.")
                     empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
                     empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
-                    return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), px.scatter(), html.P("Rate limit exceeded"), ""
+                    return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.line(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), px.scatter(), html.P("Rate limit exceeded"), ""
                     
             response_steps = requests.get("https://api.fitbit.com/1/user/-/activities/steps/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
             response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
@@ -2331,6 +2497,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     distance_list = []
     floors_list = []
     azm_list = []
+    eov_list = []  # Estimated Oxygen Variation for sleep apnea monitoring
 
     # 🚀 CACHE-FIRST: Check cache before processing API responses
     print(f"📊 Processing data for {len(temp_dates_list)} dates...")
@@ -2421,8 +2588,17 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     for entry in response_spo2:
         date_str = entry["dateTime"]
         spo2_list += [None]*(dates_str_list.index(date_str)-len(spo2_list))
+        eov_list += [None]*(dates_str_list.index(date_str)-len(eov_list))
+        
         spo2_value = entry["value"]["avg"]
         spo2_list.append(spo2_value)
+        
+        # Extract EOV (Estimated Oxygen Variation) if available
+        eov_value = None
+        if "value" in entry and isinstance(entry["value"], dict):
+            # EOV can be in different keys depending on API version
+            eov_value = entry["value"].get("eov") or entry["value"].get("variationScore")
+        eov_list.append(eov_value)
         
         # Cache SpO2
         try:
@@ -2431,6 +2607,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         except:
             pass
     spo2_list += [None]*(len(dates_str_list)-len(spo2_list))
+    eov_list += [None]*(len(dates_str_list)-len(eov_list))
     print(f"✅ Cached {spo2_cached} days of SpO2 data")
     
     # Process HRV data - only include dates in our range
@@ -2748,6 +2925,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     "Peak Minutes": peak_minutes_list,
     "weight": weight_list,
     "SPO2": spo2_list,
+    "EOV": eov_list,
     "Deep Sleep Minutes": deep_sleep_list,
     "Light Sleep Minutes": light_sleep_list,
     "REM Sleep Minutes": rem_sleep_list,
@@ -2828,6 +3006,35 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     fig_spo2.update_traces(marker_size=6)
     spo2_summary_df = calculate_table_data(df_merged, "SPO2")
     spo2_summary_table = dash_table.DataTable(spo2_summary_df.to_dict('records'), [{"name": i, "id": i} for i in spo2_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#8d3a18','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
+    
+    # EOV (Estimated Oxygen Variation) Chart
+    eov_avg = {'overall': safe_avg(df_merged["EOV"].mean(), 1), '30d': safe_avg(df_merged["EOV"].tail(30).mean(), 1)}
+    if df_merged["EOV"].notna().any() and df_merged["EOV"].sum() > 0:
+        fig_eov = px.line(df_merged, x="Date", y="EOV", line_shape="spline", color_discrete_sequence=["#e74c3c"], 
+                          title=f"<b>Oxygen Variation (EOV) - Sleep Apnea Indicator<br><br><sup>Overall average : {eov_avg['overall']} | Last 30d average : {eov_avg['30d']}</sup></b><br><br><br>", 
+                          labels={"EOV": "EOV Score"})
+        if df_merged["EOV"].dtype != object and df_merged["EOV"].notna().any():
+            fig_eov.add_annotation(x=df_merged[df_merged["EOV"].notna()].iloc[df_merged[df_merged["EOV"].notna()]["EOV"].idxmax()]["Date"], 
+                                  y=df_merged["EOV"].max(), text=str(round(df_merged["EOV"].max(), 1)), 
+                                  showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, 
+                                  font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
+            fig_eov.add_annotation(x=df_merged[df_merged["EOV"].notna()].iloc[df_merged[df_merged["EOV"].notna()]["EOV"].idxmin()]["Date"], 
+                                  y=df_merged["EOV"].min(), text=str(round(df_merged["EOV"].min(), 1)), 
+                                  showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, 
+                                  font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
+            fig_eov.add_hline(y=df_merged["EOV"].mean(), line_dash="dot",
+                            annotation_text="Average : " + str(safe_avg(df_merged["EOV"].mean(), 1)), 
+                            annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, 
+                            annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
+        eov_summary_df = calculate_table_data(df_merged, "EOV")
+        eov_summary_table = dash_table.DataTable(eov_summary_df.to_dict('records'), [{"name": i, "id": i} for i in eov_summary_df.columns], 
+                                                 style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], 
+                                                 style_header={'backgroundColor': '#c0392b','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, 
+                                                 style_cell={'textAlign': 'center'})
+    else:
+        fig_eov = px.line(title="Oxygen Variation (EOV) - No Data Available")
+        eov_summary_table = html.P("No EOV data available for this period", style={'text-align': 'center', 'color': '#999'})
+    
     fig_sleep_minutes = px.bar(df_merged, x="Date", y=["Deep Sleep Minutes", "Light Sleep Minutes", "REM Sleep Minutes", "Awake Minutes"], title=f"<b>Sleep Stages<br><br><sup>Overall average : {format_minutes(sleep_avg['overall'])} | Last 30d average : {format_minutes(sleep_avg['30d'])}</sup></b><br><br>", color_discrete_map={"Deep Sleep Minutes": '#084466', "Light Sleep Minutes": '#1e9ad6', "REM Sleep Minutes": '#4cc5da', "Awake Minutes": '#fd7676',}, height=500)
     fig_sleep_minutes.update_layout(yaxis_title='Sleep Minutes', legend=dict(orientation="h",yanchor="bottom", y=1.02, xanchor="right", x=1, title_text=''), yaxis=dict(tickvals=[1,120,240,360,480,600,720], ticktext=[f"{m // 60}h" for m in [1,120,240,360,480,600,720]], title="Sleep Time (hours)"))
     # Fix tooltip to show "Xh Ym" format instead of large numbers
@@ -3202,7 +3409,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     else:
         fig_azm_sleep_correlation = px.scatter(title='AZM-Sleep Correlation (Insufficient Data)')
     
-    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_spo2, spo2_summary_table, fig_sleep_minutes, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_filter_options, exercise_log_table, workout_dates_for_dropdown, fig_sleep_score, fig_sleep_stages_pie, sleep_dates_for_dropdown, fig_correlation, fig_azm_sleep_correlation, correlation_insights, ""
+    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_spo2, spo2_summary_table, fig_eov, eov_summary_table, fig_sleep_minutes, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_filter_options, exercise_log_table, workout_dates_for_dropdown, fig_sleep_score, fig_sleep_stages_pie, sleep_dates_for_dropdown, fig_correlation, fig_azm_sleep_correlation, correlation_insights, ""
 
 # ========================================
 # REST API Endpoints for MCP Server Integration
