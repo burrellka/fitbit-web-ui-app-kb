@@ -2016,55 +2016,97 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         "Accept": "application/json"
     }
 
-    # Collecting data-----------------------------------------------------------------------------------------------------------------------
+    # 🚀 CACHE-FIRST CHECK: Verify if ALL data is cached before making ANY API calls
+    print(f"📊 Generating report for {start_date} to {end_date}")
     
-    try:
-        user_profile = requests.get("https://api.fitbit.com/1/user/-/profile.json", headers=headers).json()
-        
-        # Check for rate limiting or errors
-        if 'error' in user_profile:
-            error_code = user_profile['error'].get('code')
-            if error_code == 429:
-                print("⚠️ RATE LIMIT EXCEEDED! Fitbit API limit: 150 requests/hour")
-                print("Please wait at least 1 hour before generating another report.")
-                # Return with error message (44 outputs total)
-                empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
-                empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
-                return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), html.P("Rate limit exceeded"), ""
-            else:
-                print(f"API Error: {user_profile['error']}")
-                
-        response_heartrate = requests.get("https://api.fitbit.com/1/user/-/activities/heart/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-        
-        # Check for rate limiting in heart rate response
-        if 'error' in response_heartrate:
-            error_code = response_heartrate['error'].get('code')
-            if error_code == 429:
-                print("⚠️ RATE LIMIT EXCEEDED! Fitbit API limit: 150 requests/hour")
-                print("Please wait at least 1 hour before generating another report.")
-                empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
-                empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
-                return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), html.P("Rate limit exceeded"), ""
-                
-        response_steps = requests.get("https://api.fitbit.com/1/user/-/activities/steps/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-        response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-        response_spo2 = requests.get("https://api.fitbit.com/1/user/-/spo2/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    except Exception as e:
-        print(f"ERROR fetching initial data: {e}")
-        # Return empty results if API calls fail with valid empty plots
-        empty_fig = px.line(title="Error Fetching Data")
-        empty_heatmap = px.imshow([[0]], title="No Data Available")
-        return dash.no_update, dash.no_update, dash.no_update, empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Error fetching data"), px.line(), px.pie(), px.scatter(), html.P("Error fetching data"), ""
+    # Generate list of dates in range
+    dates_str_list = []
+    current = datetime.strptime(start_date, '%Y-%m-%d')
+    end = datetime.strptime(end_date, '%Y-%m-%d')
+    while current <= end:
+        dates_str_list.append(current.strftime('%Y-%m-%d'))
+        current += timedelta(days=1)
     
-    # Build dates list early for parallel fetching
-    temp_dates_list = []
-    if 'activities-heart' in response_heartrate:
-        for entry in response_heartrate['activities-heart']:
-            temp_dates_list.append(entry['dateTime'])
+    print(f"🔍 Checking cache for {len(dates_str_list)} days...")
+    
+    # Check if ALL required data is in cache
+    all_cached = True
+    missing_dates = []
+    
+    for date_str in dates_str_list:
+        sleep_data = cache.get_sleep_data(date_str)
+        advanced_data = cache.get_advanced_metrics(date_str)
+        daily_data = cache.get_daily_metrics(date_str)
+        
+        if not sleep_data or not advanced_data or not daily_data:
+            all_cached = False
+            missing_dates.append(date_str)
+    
+    if all_cached:
+        print(f"✅ 100% CACHED! Serving report from cache (0 API calls)")
+        # Skip ALL API calls - serve directly from cache
+        # We'll still need to populate the response structures from cache below
+        user_profile = {"user": {"displayName": "Cached User"}}  # Dummy profile
+        response_heartrate = {"activities-heart": [{"dateTime": d} for d in dates_str_list]}
+        response_steps = {"activities-steps": []}
+        response_weight = {"weight": []}
+        response_spo2 = []
     else:
-        print(f"ERROR: No heart rate data in response: {response_heartrate}")
-        empty_heatmap = px.imshow([[0]], title="No Data Available")
-        return dash.no_update, dash.no_update, dash.no_update, px.line(), [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("No heart rate data"), px.line(), px.pie(), px.scatter(), html.P("No heart rate data"), ""
+        print(f"📥 Cache incomplete - {len(missing_dates)} days missing. Fetching from API...")
+        print(f"Missing dates: {missing_dates[:5]}{'...' if len(missing_dates) > 5 else ''}")
+        
+        # Collecting data-----------------------------------------------------------------------------------------------------------------------
+        
+        try:
+            user_profile = requests.get("https://api.fitbit.com/1/user/-/profile.json", headers=headers).json()
+            
+            # Check for rate limiting or errors
+            if 'error' in user_profile:
+                error_code = user_profile['error'].get('code')
+                if error_code == 429:
+                    print("⚠️ RATE LIMIT EXCEEDED! Fitbit API limit: 150 requests/hour")
+                    print("Please wait at least 1 hour before generating another report.")
+                    # Return with error message (44 outputs total)
+                    empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
+                    empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
+                    return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), html.P("Rate limit exceeded"), ""
+                else:
+                    print(f"API Error: {user_profile['error']}")
+                    
+            response_heartrate = requests.get("https://api.fitbit.com/1/user/-/activities/heart/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+            
+            # Check for rate limiting in heart rate response
+            if 'error' in response_heartrate:
+                error_code = response_heartrate['error'].get('code')
+                if error_code == 429:
+                    print("⚠️ RATE LIMIT EXCEEDED! Fitbit API limit: 150 requests/hour")
+                    print("Please wait at least 1 hour before generating another report.")
+                    empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
+                    empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
+                    return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), html.P("Rate limit exceeded"), ""
+                    
+            response_steps = requests.get("https://api.fitbit.com/1/user/-/activities/steps/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+            response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+            response_spo2 = requests.get("https://api.fitbit.com/1/user/-/spo2/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        except Exception as e:
+            print(f"ERROR fetching initial data: {e}")
+            # Return empty results if API calls fail with valid empty plots
+            empty_fig = px.line(title="Error Fetching Data")
+            empty_heatmap = px.imshow([[0]], title="No Data Available")
+            return dash.no_update, dash.no_update, dash.no_update, empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Error fetching data"), [], px.line(), px.pie(), [], px.scatter(), html.P("Error fetching data"), ""
+    
+    # Build dates list for processing (use our pre-generated list if all_cached)
+    if all_cached:
+        temp_dates_list = dates_str_list
+    else:
+        temp_dates_list = []
+        if 'activities-heart' in response_heartrate:
+            for entry in response_heartrate['activities-heart']:
+                temp_dates_list.append(entry['dateTime'])
+        else:
+            print(f"ERROR: No heart rate data in response: {response_heartrate}")
+            empty_heatmap = px.imshow([[0]], title="No Data Available")
+            return dash.no_update, dash.no_update, dash.no_update, px.line(), [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("No heart rate data"), [], px.line(), px.pie(), [], px.scatter(), html.P("No heart rate data"), ""
     
     # 🚀 CACHE-FIRST: Check cache for advanced metrics before fetching from API
     response_hrv = {"hrv": []}
