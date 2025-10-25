@@ -529,16 +529,17 @@ def populate_sleep_score_cache(dates_to_fetch: list, headers: dict, force_refres
             if 'sleep' in response and len(response['sleep']) > 0:
                 for sleep_record in response['sleep']:
                     if sleep_record.get('isMainSleep', True):
-                        # Extract sleep score
+                        # Extract ACTUAL sleep score (NOT efficiency!)
                         sleep_score = None
                         if 'sleepScore' in sleep_record and isinstance(sleep_record['sleepScore'], dict):
                             sleep_score = sleep_record['sleepScore'].get('overall')
+                            print(f"✅ Found REAL sleep score for {date_str}: {sleep_score}")
+                        else:
+                            print(f"⚠️ No sleep score found for {date_str} - API didn't provide it (may be too short/incomplete sleep)")
                         
-                        # Fallback to efficiency if no sleep score
-                        if sleep_score is None and 'efficiency' in sleep_record:
-                            sleep_score = sleep_record['efficiency']
-                        
-                        if sleep_score is not None:
+                        # NEVER fallback to efficiency - efficiency != sleep score!
+                        # If Fitbit doesn't provide a sleep score, store None
+                        if sleep_score is not None or 'efficiency' in sleep_record:
                             # Cache the sleep score and related data
                             cache.set_sleep_score(
                                 date=date_str,
@@ -1781,10 +1782,10 @@ def display_sleep_details(selected_date, oauth_token):
                     'awake': 'Awake'
                 }
                 
-                # Create horizontal stacked bar timeline using Plotly
+                # Create TRUE Gantt-style timeline with REAL TIMES on X-axis
                 fig_timeline = go.Figure()
                 
-                # Build continuous timeline segments
+                # Build timeline segments with actual start/end times
                 for idx, entry in enumerate(stages_data):
                     stage = entry.get('level', '').lower()
                     start_time = datetime.fromisoformat(entry['dateTime'].replace('Z', '+00:00'))
@@ -1792,10 +1793,11 @@ def display_sleep_details(selected_date, oauth_token):
                     end_time = start_time + timedelta(seconds=duration_seconds)
                     duration_minutes = duration_seconds / 60
                     
-                    # Create a horizontal bar for this stage
+                    # Create a horizontal bar segment for this stage with REAL times
                     fig_timeline.add_trace(go.Bar(
-                        x=[duration_minutes],
-                        y=["Sleep Stages"],
+                        base=[start_time],  # Start time
+                        x=[timedelta(seconds=duration_seconds)],  # Duration as timedelta
+                        y=["Sleep"],
                         orientation='h',
                         marker=dict(
                             color=stage_colors.get(stage, '#ccc'),
@@ -1803,7 +1805,7 @@ def display_sleep_details(selected_date, oauth_token):
                         ),
                         name=stage_names.get(stage, stage),
                         hovertemplate=f"<b>{stage_names.get(stage, stage)}</b><br>" +
-                                      f"Start: {start_time.strftime('%I:%M %p')}<br>" +
+                                      f"{start_time.strftime('%I:%M %p')} - {end_time.strftime('%I:%M %p')}<br>" +
                                       f"Duration: {int(duration_minutes)} min<br>" +
                                       "<extra></extra>",
                         showlegend=(idx == 0 or stage != stages_data[idx-1].get('level', '').lower()),
@@ -1811,10 +1813,12 @@ def display_sleep_details(selected_date, oauth_token):
                     ))
                 
                 fig_timeline.update_layout(
-                    title=dict(text="<b>Chronological Sleep Timeline</b><br><sup>Minute-by-minute transitions between sleep stages</sup>", 
+                    title=dict(text="<b>Sleep Timeline</b><br><sup>Showing when each sleep stage occurred throughout the night</sup>", 
                               font=dict(size=14)),
                     xaxis=dict(
-                        title="Duration (minutes)",
+                        title="Time of Night",
+                        type='date',
+                        tickformat='%I:%M %p',
                         gridcolor='#f0f0f0',
                         showgrid=True
                     ),
