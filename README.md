@@ -164,11 +164,122 @@ services:
 
 [How to get ACCESS TOKEN](https://github.com/arpanghosh8453/fitbit-web-ui-app/blob/main/help/GET_ACCESS_TOKEN.md)
 
-## Contributions
+---
 
-Special thanks to [@dipanghosh](https://github.com/dipanghosh) for his help and contribution towards the sleep schedule analysis part of the script and overall aesthetics suggestions. 
+## 🙏 Credits & Attribution
 
-## Support me 
-If you love visualizing your long term data with this web app, please consider supporting me with a coffee ❤ if you can! You can view more detailed health statistics with this setup than paying a subscription fee to Fitbit, thanks to their REST API services. 
+### Original Project
+This enhanced edition is built upon the excellent foundation created by **[@arpanghosh8453](https://github.com/arpanghosh8453/fitbit-web-ui-app)**. 
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/A0A84F3DP)
+**Huge thanks to Arpan Ghosh** for:
+- Creating the original Fitbit Web UI application
+- Implementing the core visualization framework
+- Establishing the Fitbit API integration patterns
+- Open-sourcing the project for the community
+
+Special thanks to [@dipanghosh](https://github.com/dipanghosh) for contributions to sleep schedule analysis and aesthetics in the original project.
+
+### Enhanced Edition Philosophy
+
+This fork represents a **fundamental architectural shift** from the original project:
+
+**Original Approach**: Manual token entry, on-demand API fetching, no persistence  
+**Enhanced Approach**: OAuth 2.0 authentication, intelligent caching, background data population, MCP API integration
+
+#### Key Enhancements:
+- 🔐 **OAuth 2.0 & Automatic Token Refresh** - Seamless authentication without manual token management
+- 💾 **SQLite Caching System** - Persistent data storage with 3-phase hourly background builder
+- 🚀 **Real-Time Today Refresh** - Always fetch fresh data for today while serving history from cache
+- 🔌 **MCP Server Integration** - RESTful API for LLM-powered insights via Model Context Protocol
+- 🔒 **Dual-Port Security** - Separate OAuth callback and password-protected dashboard
+- 📊 **Advanced Analytics** - Exercise-sleep correlations, sleep timeline visualizations, drill-down features
+- ⏰ **Smart Rate Limit Management** - 3-phase caching strategy respects Fitbit's 150 calls/hour limit
+
+---
+
+## ⚠️ Important Disclaimer
+
+### Code Authorship
+While maintained by **[@burrellka](https://github.com/burrellka)** (a business transformation and process architect), **all code in this enhanced edition was written by Cursor AI** (Claude Sonnet 4.5) to meet specific personal homelab requirements.
+
+**What this means:**
+- ✅ This is a **production-grade personal project** running on my homelab
+- ✅ Code is **thoroughly tested** for my use case (TrueNAS/Dockge deployment)
+- ⚠️ **No professional software engineering review** has been performed
+- ⚠️ **Use at your own risk** - this is hobby-grade code, not enterprise software
+- ⚠️ **Security considerations** are implemented but not audited by security professionals
+
+### Support & Maintenance
+**This is a personal project with no warranty or guaranteed support.**
+
+**If you encounter issues:**
+1. Check the comprehensive documentation (README, DEPLOYMENT_GUIDE.md, API_DOCUMENTATION.md)
+2. Review troubleshooting sections in the deployment guide
+3. Open a GitHub issue with detailed logs and reproduction steps
+4. **Best effort support** - I'll help when time permits, but this is a hobby project
+
+**Contributions Welcome!**
+- 🍴 **Fork freely** - Modify, enhance, and adapt to your needs
+- 🐛 **Bug reports** - Issues with clear reproduction steps are appreciated
+- 💡 **Feature requests** - Share your ideas, but no guarantees on implementation
+- 🔧 **Pull requests** - Contributions are welcome, but review may be slow
+
+### Open Source License
+This project inherits its license from the original work. See [LICENSE](LICENSE) for details.
+
+**You are free to:**
+- ✅ Use this software for personal or commercial purposes
+- ✅ Modify and distribute your own versions
+- ✅ Use it as a learning resource or starting point for your projects
+
+**With the understanding that:**
+- ❌ No warranty or support is provided
+- ❌ The authors are not liable for any damages or issues
+- ❌ You use this software at your own risk
+
+---
+
+## 📚 Additional Documentation
+
+- **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Comprehensive deployment and troubleshooting guide
+- **[API_DOCUMENTATION.md](API_DOCUMENTATION.md)** - REST API reference for MCP integration
+- **[FITBIT_API_TECHNICAL_DOCUMENTATION.md](FITBIT_API_TECHNICAL_DOCUMENTATION.md)** - Detailed Fitbit API usage patterns
+- **[SECURITY_SETUP.md](SECURITY_SETUP.md)** - Dual-port security architecture guide
+- **[GET_ACCESS_TOKEN.md](help/GET_ACCESS_TOKEN.md)** - Fitbit Developer App setup
+
+---
+
+## 🎯 Use Cases
+
+**Perfect for:**
+- 📊 Personal health data visualization without Fitbit Premium subscription
+- 🏠 Homelab enthusiasts running Docker/TrueNAS/Dockge
+- 🤖 LLM integration for AI-powered health insights via MCP
+- 📈 Long-term health trend analysis with 365 days of cached data
+- 🔬 Developers learning Fitbit API integration patterns
+
+**Not suitable for:**
+- 🏥 Medical or clinical use (this is hobby-grade software)
+- 🏢 Enterprise deployments requiring professional support
+- 👥 Multi-user scenarios (designed for single-user personal use)
+- 🔐 High-security environments requiring professional security audits
+
+---
+
+## 🌟 Philosophy
+
+This project embodies the spirit of **personal data ownership** and **open-source collaboration**. Rather than paying for Fitbit Premium, this tool empowers you to:
+- Own your health data
+- Visualize it however you want
+- Integrate it with AI for personalized insights
+- Learn from the code and adapt it to your needs
+
+If this project helps you, **pay it forward**:
+- ⭐ Star the repo to boost visibility
+- 🍴 Fork and share your enhancements
+- 📖 Improve the documentation
+- 🤝 Help others in GitHub issues
+
+---
+
+**Built with curiosity, powered by AI, maintained with hobby-grade enthusiasm.** 🚀
