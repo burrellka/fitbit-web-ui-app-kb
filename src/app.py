@@ -907,12 +907,20 @@ app.layout = html.Div(children=[
         html.Span("✨ Advanced Metrics (HRV, Breathing Rate, Temperature) enabled with smart caching", 
                   style={'font-size': '13px', 'color': '#2e7d32', 'font-weight': 'bold'})
     ]),
-    html.Div(style={'text-align': 'center', 'margin-top': '10px', 'padding': '12px', 'background-color': '#fff3cd', 'border-left': '4px solid #ffc107', 'border-radius': '5px', 'max-width': '700px', 'margin-left': 'auto', 'margin-right': 'auto'}, children=[
-        html.Span("⚠️ ", style={'font-size': '16px'}),
-        html.Strong("Incorrect Sleep Scores? ", style={'color': '#856404'}),
-        html.Span("Click ", style={'color': '#856404', 'font-size': '13px'}),
-        html.Strong("'Flush Cache'", style={'color': '#d39e00'}),
-        html.Span(" to clear old data and re-populate with accurate Fitbit sleep scores.", style={'color': '#856404', 'font-size': '13px'})
+    html.Div(style={'text-align': 'center', 'margin-top': '10px', 'padding': '16px', 'background-color': '#f8d7da', 'border': '2px solid #f5c6cb', 'border-radius': '8px', 'max-width': '750px', 'margin-left': 'auto', 'margin-right': 'auto', 'box-shadow': '0 2px 8px rgba(0,0,0,0.1)'}, children=[
+        html.Div(style={'display': 'flex', 'align-items': 'center', 'justify-content': 'center', 'margin-bottom': '8px'}, children=[
+            html.Span("🚨 ", style={'font-size': '24px', 'margin-right': '8px'}),
+            html.Strong("CRITICAL: Sleep Scores Showing 89 Instead of 80?", style={'color': '#721c24', 'font-size': '16px'})
+        ]),
+        html.Div(style={'text-align': 'center'}, children=[
+            html.Span("Old efficiency values are in your cache! ", style={'color': '#721c24', 'font-size': '14px'}),
+            html.Strong("YOU MUST FLUSH CACHE", style={'color': '#dc3545', 'font-size': '15px', 'text-decoration': 'underline'}),
+            html.Span(" to clear old data!", style={'color': '#721c24', 'font-size': '14px'}),
+            html.Br(),
+            html.Span("Click ", style={'color': '#721c24', 'font-size': '13px', 'margin-top': '6px'}),
+            html.Strong("'🗑️ Flush Cache'", style={'color': '#dc3545', 'font-size': '14px'}),
+            html.Span(" button above, wait 30 sec, then generate a new report.", style={'color': '#721c24', 'font-size': '13px'})
+        ])
     ]),
     dcc.Location(id="location"),
     dcc.Store(id="oauth-token", storage_type='session'),  # Store OAuth token in session storage
@@ -2814,6 +2822,12 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     spo2_summary_table = dash_table.DataTable(spo2_summary_df.to_dict('records'), [{"name": i, "id": i} for i in spo2_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#8d3a18','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
     fig_sleep_minutes = px.bar(df_merged, x="Date", y=["Deep Sleep Minutes", "Light Sleep Minutes", "REM Sleep Minutes", "Awake Minutes"], title=f"<b>Sleep Stages<br><br><sup>Overall average : {format_minutes(sleep_avg['overall'])} | Last 30d average : {format_minutes(sleep_avg['30d'])}</sup></b><br><br>", color_discrete_map={"Deep Sleep Minutes": '#084466', "Light Sleep Minutes": '#1e9ad6', "REM Sleep Minutes": '#4cc5da', "Awake Minutes": '#fd7676',}, height=500)
     fig_sleep_minutes.update_layout(yaxis_title='Sleep Minutes', legend=dict(orientation="h",yanchor="bottom", y=1.02, xanchor="right", x=1, title_text=''), yaxis=dict(tickvals=[1,120,240,360,480,600,720], ticktext=[f"{m // 60}h" for m in [1,120,240,360,480,600,720]], title="Sleep Time (hours)"))
+    # Fix tooltip to show "Xh Ym" format instead of large numbers
+    fig_sleep_minutes.update_traces(hovertemplate='<b>%{x}</b><br>%{fullData.name}: %{customdata}<extra></extra>')
+    for trace in fig_sleep_minutes.data:
+        stage_column = trace.name
+        formatted_values = df_merged[stage_column].apply(lambda x: format_minutes(int(x)) if pd.notna(x) else "N/A")
+        trace.customdata = formatted_values
     if df_merged["Total Sleep Minutes"].dtype != object and df_merged["Total Sleep Minutes"].notna().any():
         fig_sleep_minutes.add_annotation(x=df_merged.iloc[df_merged["Total Sleep Minutes"].idxmax()]["Date"], y=df_merged["Total Sleep Minutes"].max(), text=str(format_minutes(df_merged["Total Sleep Minutes"].max())), showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
         fig_sleep_minutes.add_annotation(x=df_merged.iloc[df_merged["Total Sleep Minutes"].idxmin()]["Date"], y=df_merged["Total Sleep Minutes"].min(), text=str(format_minutes(df_merged["Total Sleep Minutes"].min())), showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
@@ -2825,6 +2839,14 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     sleep_summary_table = dash_table.DataTable(sleep_summary_df.to_dict('records'), [{"name": i, "id": i} for i in sleep_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#636efa','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
     fig_sleep_regularity = px.bar(df_merged, x="Date", y="Total Sleep Seconds", base="Sleep Start Time Seconds", title="<b>Sleep Regularity<br><br><sup>The chart time here is always in local time ( Independent of timezone changes )</sup></b>", labels={"Total Sleep Seconds":"Time of Day ( HH:MM )"})
     fig_sleep_regularity.update_layout(yaxis = dict(tickmode = 'array',tickvals = list(range(0, 120000, 10000)),ticktext = list(map(seconds_to_tick_label, list(range(0, 120000, 10000))))))
+    # Fix tooltip to show time in HH:MM format instead of numbers
+    sleep_start_formatted = df_merged["Sleep Start Time Seconds"].apply(lambda x: seconds_to_tick_label(int(x)) if pd.notna(x) else "N/A")
+    sleep_end_formatted = df_merged["Sleep End Time Seconds"].apply(lambda x: seconds_to_tick_label(int(x)) if pd.notna(x) else "N/A")
+    sleep_duration_formatted = df_merged["Total Sleep Minutes"].apply(lambda x: format_minutes(int(x)) if pd.notna(x) else "N/A")
+    fig_sleep_regularity.update_traces(
+        hovertemplate='<b>%{x}</b><br>Sleep Start: %{customdata[0]}<br>Sleep End: %{customdata[1]}<br>Duration: %{customdata[2]}<extra></extra>', 
+        customdata=list(zip(sleep_start_formatted, sleep_end_formatted, sleep_duration_formatted))
+    )
     if df_merged["Sleep Start Time Seconds"].notna().any():
         fig_sleep_regularity.add_hline(y=df_merged["Sleep Start Time Seconds"].mean(), line_dash="dot",annotation_text="Sleep Start Time Trend : "+ str(seconds_to_tick_label(safe_avg(df_merged["Sleep Start Time Seconds"].mean(), as_int=True))), annotation_position="bottom right", annotation_bgcolor="#0a3024", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
         fig_sleep_regularity.add_hline(y=df_merged["Sleep End Time Seconds"].mean(), line_dash="dot",annotation_text="Sleep End Time Trend : " + str(seconds_to_tick_label(safe_avg(df_merged["Sleep End Time Seconds"].mean(), as_int=True))), annotation_position="top left", annotation_bgcolor="#5e060d", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
