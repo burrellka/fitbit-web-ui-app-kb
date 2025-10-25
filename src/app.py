@@ -280,11 +280,14 @@ def background_cache_builder(access_token: str):
                                             cache.set_sleep_score(
                                                 date=yesterday,
                                                 sleep_score=sleep_score,
-                                                duration_minutes=sleep_record.get('duration', 0) // 60000,
-                                                deep_minutes=sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes', 0),
-                                                light_minutes=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes', 0),
-                                                rem_minutes=sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes', 0),
-                                                awake_minutes=sleep_record.get('levels', {}).get('summary', {}).get('wake', {}).get('minutes', 0)
+                                                efficiency=sleep_record.get('efficiency'),
+                                                total_sleep=sleep_record.get('minutesAsleep'),
+                                                deep=sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes'),
+                                                light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
+                                                rem=sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes'),
+                                                wake=sleep_record.get('levels', {}).get('summary', {}).get('wake', {}).get('minutes'),
+                                                start_time=sleep_record.get('startTime'),
+                                                sleep_data_json=str(sleep_record)
                                             )
                                             yesterday_success += 1
                                             print(f"✅ Yesterday's Sleep cached")
