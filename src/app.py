@@ -273,10 +273,10 @@ def background_cache_builder(access_token: str):
                                         sleep_score = None
                                         if 'sleepScore' in sleep_record and isinstance(sleep_record['sleepScore'], dict):
                                             sleep_score = sleep_record['sleepScore'].get('overall')
-                                        if sleep_score is None and 'efficiency' in sleep_record:
-                                            sleep_score = sleep_record['efficiency']
+                                        # DO NOT fallback to efficiency - they are different metrics!
                                         
                                         if sleep_score is not None:
+                                            print(f"✅ YESTERDAY REFRESH - Found REAL sleep score for {yesterday}: {sleep_score}")
                                             cache.set_sleep_score(
                                                 date=yesterday,
                                                 sleep_score=sleep_score,
@@ -465,10 +465,10 @@ def background_cache_builder(access_token: str):
                                             sleep_score = None
                                             if 'sleepScore' in sleep_record and isinstance(sleep_record['sleepScore'], dict):
                                                 sleep_score = sleep_record['sleepScore'].get('overall')
-                                            if sleep_score is None and 'efficiency' in sleep_record:
-                                                sleep_score = sleep_record['efficiency']
+                                            # DO NOT fallback to efficiency - they are different metrics!
                                             
                                             if sleep_score is not None:
+                                                print(f"✅ PHASE 3 - Found REAL sleep score for {date_str}: {sleep_score}")
                                                 cache.set_sleep_score(
                                                     date=date_str,
                                                     sleep_score=sleep_score,
@@ -1890,10 +1890,14 @@ def display_sleep_details(selected_date, oauth_token):
                     end_time = start_time + timedelta(seconds=duration_seconds)
                     duration_minutes = duration_seconds / 60
                     
+                    # Convert to milliseconds (JSON serializable)
+                    start_ms = int(start_time.timestamp() * 1000)
+                    duration_ms = duration_seconds * 1000
+                    
                     # Create a horizontal bar segment for this stage with REAL times
                     fig_timeline.add_trace(go.Bar(
-                        base=[start_time],  # Start time
-                        x=[timedelta(seconds=duration_seconds)],  # Duration as timedelta
+                        base=[start_ms],  # Start time in milliseconds
+                        x=[duration_ms],  # Duration in milliseconds
                         y=["Sleep"],
                         orientation='h',
                         marker=dict(
@@ -2887,6 +2891,9 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                 else:
                     sleep_start_time = sleep_start_time + timedelta(hours=-12)
                 sleep_time_of_day = sleep_start_time.time()
+                
+                # DEBUG: Log what we're pulling from cache
+                print(f"📊 Using CACHED sleep score for {date_str}: {cached_data['sleep_score']} (efficiency: {cached_data.get('efficiency', 'N/A')})")
                 
                 sleep_record_dict[date_str] = {
                     'deep': cached_data['deep'],
