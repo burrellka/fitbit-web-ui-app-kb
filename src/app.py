@@ -414,15 +414,18 @@ def background_cache_builder(access_token: str):
                     print("✅ All daily metrics fully cached!")
                     break
                 
-                # Process in 7-day blocks
+                # Process in 7-day blocks, starting from MOST RECENT (work backward)
                 block_size = 7
-                dates_to_fetch = missing_dates[:block_size]  # Take next 7 days
+                missing_dates_reversed = list(reversed(missing_dates))  # Newest first
+                dates_to_fetch = missing_dates_reversed[:block_size]  # Take most recent 7 days
                 
                 if api_calls_this_hour + (len(dates_to_fetch) * 4) > MAX_CALLS_PER_HOUR:
                     print(f"⚠️ Not enough budget for 7-day block ({len(dates_to_fetch)*4} calls needed)")
                     break
                 
-                print(f"📥 Fetching 7-day block: {dates_to_fetch[0]} to {dates_to_fetch[-1] if len(dates_to_fetch) > 1 else dates_to_fetch[0]}")
+                # Display range in chronological order (even though we fetch newest first)
+                date_range_display = f"{min(dates_to_fetch)} to {max(dates_to_fetch)}" if len(dates_to_fetch) > 1 else dates_to_fetch[0]
+                print(f"📥 Fetching 7-day block: {date_range_display} (newest → oldest)")
                 
                 phase3_success = 0
                 for date_str in dates_to_fetch:
