@@ -907,6 +907,13 @@ app.layout = html.Div(children=[
         html.Span("✨ Advanced Metrics (HRV, Breathing Rate, Temperature) enabled with smart caching", 
                   style={'font-size': '13px', 'color': '#2e7d32', 'font-weight': 'bold'})
     ]),
+    html.Div(style={'text-align': 'center', 'margin-top': '10px', 'padding': '12px', 'background-color': '#fff3cd', 'border-left': '4px solid #ffc107', 'border-radius': '5px', 'max-width': '700px', 'margin-left': 'auto', 'margin-right': 'auto'}, children=[
+        html.Span("⚠️ ", style={'font-size': '16px'}),
+        html.Strong("Incorrect Sleep Scores? ", style={'color': '#856404'}),
+        html.Span("Click ", style={'color': '#856404', 'font-size': '13px'}),
+        html.Strong("'Flush Cache'", style={'color': '#d39e00'}),
+        html.Span(" to clear old data and re-populate with accurate Fitbit sleep scores.", style={'color': '#856404', 'font-size': '13px'})
+    ]),
     dcc.Location(id="location"),
     dcc.Store(id="oauth-token", storage_type='session'),  # Store OAuth token in session storage
     dcc.Store(id="refresh-token", storage_type='session'),  # Store refresh token in session storage
@@ -1412,6 +1419,63 @@ def display_workout_details(selected_date, oauth_token):
     
     activities = exercise_data_store[selected_date]
     
+    # Helper function to create HR zones chart
+    def create_hr_zones_chart(activity):
+        """Create a chart showing heart rate zones distribution"""
+        import plotly.graph_objects as go
+        
+        hr_zones = activity.get('heartRateZones', [])
+        if not hr_zones:
+            return None
+        
+        # Prepare zone data
+        zone_names = []
+        zone_minutes = []
+        zone_colors = []
+        
+        color_map = {
+            'Out of Range': '#90caf9',
+            'Fat Burn': '#ffd54f',
+            'Cardio': '#ff9800',
+            'Peak': '#f44336'
+        }
+        
+        for zone in hr_zones:
+            if zone.get('minutes', 0) > 0:
+                zone_names.append(zone.get('name', 'Zone'))
+                zone_minutes.append(zone.get('minutes', 0))
+                zone_colors.append(color_map.get(zone.get('name', ''), '#ccc'))
+        
+        if not zone_names:
+            return None
+        
+        # Create horizontal bar chart
+        fig = go.Figure(data=[
+            go.Bar(
+                y=zone_names,
+                x=zone_minutes,
+                orientation='h',
+                marker=dict(color=zone_colors),
+                text=[f"{m} min" for m in zone_minutes],
+                textposition='inside',
+                textfont=dict(color='white', size=12),
+                hovertemplate='<b>%{y}</b><br>Time: %{x} min<extra></extra>'
+            )
+        ])
+        
+        fig.update_layout(
+            title=dict(text="Time in Each Heart Rate Zone", font=dict(size=14)),
+            xaxis=dict(title="Minutes", gridcolor='#f0f0f0'),
+            yaxis=dict(title=""),
+            height=250,
+            margin=dict(l=100, r=50, t=50, b=50),
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            showlegend=False
+        )
+        
+        return fig
+    
     # Build detailed display
     details = []
     for activity in activities:
@@ -1484,7 +1548,12 @@ def display_workout_details(selected_date, oauth_token):
                         ])
                     ]) for zone in hr_zones if zone.get('minutes', 0) > 0]
                 ])
-            ]) if activity.get('heartRateZones') else html.Div("HR zone data not available", style={'color': '#999', 'font-style': 'italic', 'margin-top': '10px'})
+            ]) if activity.get('heartRateZones') else html.Div("HR zone data not available", style={'color': '#999', 'font-style': 'italic', 'margin-top': '10px'}),
+            
+            # Add HR Zones Chart
+            html.Div(style={'margin-top': '25px'}, children=[
+                dcc.Graph(figure=create_hr_zones_chart(activity), config={'displayModeBar': False}) if create_hr_zones_chart(activity) else html.Div("HR zone chart not available", style={'color': '#999', 'font-style': 'italic', 'text-align': 'center'})
+            ])
         ]))
     
     return html.Div(details)
@@ -1504,6 +1573,93 @@ def display_sleep_details(selected_date, oauth_token):
         return html.Div(f"No sleep data available for {selected_date}", style={'color': '#999'})
     
     sleep_data = sleep_detail_data_store[selected_date]
+    
+    # Try to build chronological sleep timeline from detailed data
+    timeline_figure = None
+    try:
+        import ast
+        import json as json_lib
+        from datetime import datetime, timedelta
+        import plotly.graph_objects as go
+        
+        # Get the full sleep record from cached data
+        cached_full_data = cache.get_sleep_data(selected_date)
+        if cached_full_data and cached_full_data.get('sleep_data_json'):
+            # Parse the stored JSON
+            sleep_json_str = cached_full_data['sleep_data_json']
+            try:
+                sleep_record = ast.literal_eval(sleep_json_str) if isinstance(sleep_json_str, str) else sleep_json_str
+            except:
+                try:
+                    sleep_record = json_lib.loads(sleep_json_str)
+                except:
+                    sleep_record = None
+            
+            if sleep_record and 'levels' in sleep_record and 'data' in sleep_record['levels']:
+                # Extract minute-by-minute sleep stages
+                stages_data = sleep_record['levels']['data']
+                
+                #  Prepare data for timeline chart
+                stage_colors = {
+                    'deep': '#084466',
+                    'light': '#1e9ad6',
+                    'rem': '#4cc5da',
+                    'wake': '#fd7676',
+                    'awake': '#fd7676'
+                }
+                
+                stage_names = {
+                    'deep': 'Deep',
+                    'light': 'Light',
+                    'rem': 'REM',
+                    'wake': 'Awake',
+                    'awake': 'Awake'
+                }
+                
+                # Create Gantt-style timeline using Plotly
+                fig_timeline = go.Figure()
+                
+                for entry in stages_data:
+                    stage = entry.get('level', '').lower()
+                    start_time = datetime.fromisoformat(entry['dateTime'].replace('Z', '+00:00'))
+                    duration_seconds = entry.get('seconds', 0)
+                    end_time = start_time + timedelta(seconds=duration_seconds)
+                    
+                    # Add bar for this sleep stage segment
+                    fig_timeline.add_trace(go.Scatter(
+                        x=[start_time, end_time],
+                        y=[1, 1],
+                        mode='lines',
+                        line=dict(color=stage_colors.get(stage, '#ccc'), width=20),
+                        hovertemplate=f"<b>{stage_names.get(stage, stage)}</b><br>" +
+                                      f"Start: {start_time.strftime('%I:%M %p')}<br>" +
+                                      f"Duration: {duration_seconds // 60} min<br>" +
+                                      "<extra></extra>",
+                        showlegend=False
+                    ))
+                
+                fig_timeline.update_layout(
+                    title=dict(text="Chronological Sleep Timeline", font=dict(size=16)),
+                    xaxis=dict(
+                        title="Time",
+                        tickformat='%I:%M %p',
+                        gridcolor='#f0f0f0'
+                    ),
+                    yaxis=dict(
+                        visible=False,
+                        range=[0.5, 1.5]
+                    ),
+                    height=200,
+                    margin=dict(l=50, r=50, t=50, b=50),
+                    plot_bgcolor='white',
+                    paper_bgcolor='white',
+                    hovermode='closest'
+                )
+                
+                timeline_figure = fig_timeline
+    except Exception as e:
+        print(f"⚠️ Error creating sleep timeline for {selected_date}: {e}")
+        pass
     
     # Get sleep score rating
     score = sleep_data.get('sleep_score', 0)
@@ -1676,6 +1832,11 @@ def display_sleep_details(selected_date, oauth_token):
                     html.Span("💭 REM"),
                     html.Span("😳 Awake"),
                 ])
+            ]),
+            
+            # Chronological Sleep Timeline (like Fitbit app)
+            html.Div(style={'margin-top': '25px'}, children=[
+                dcc.Graph(figure=timeline_figure, config={'displayModeBar': False}) if timeline_figure else html.Div("Detailed timeline data not available", style={'color': '#999', 'font-style': 'italic', 'text-align': 'center'})
             ])
         ]),
     ])
