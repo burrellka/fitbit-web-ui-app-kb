@@ -149,10 +149,22 @@ def background_cache_builder(access_token: str):
             
             headers = {"Authorization": f"Bearer {access_token}"}
             today = datetime.now().strftime('%Y-%m-%d')
+            yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+            
+            # Check if this is the first run of a new day
+            last_cache_date = cache.get_metadata('last_cache_date')
+            is_first_run_of_day = (last_cache_date != today)
             
             print(f"\n{'='*60}")
             print(f"🔄 NEW HOURLY CYCLE STARTING - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            if is_first_run_of_day:
+                print(f"🌅 FIRST RUN OF NEW DAY - Will refresh YESTERDAY + TODAY")
+            else:
+                print(f"🔄 Same day run - Will refresh TODAY only")
             print(f"{'='*60}\n")
+            
+            # Update last cache date
+            cache.set_metadata('last_cache_date', today)
             
             # ========== PHASE 1: RANGE-BASED ENDPOINTS (Most Efficient) ==========
             print("📍 PHASE 1: Range-Based Endpoints (Single call for entire history)")
@@ -207,6 +219,103 @@ def background_cache_builder(access_token: str):
                 print("⏸️ Hourly limit reached. Waiting 1 hour...")
                 time.sleep(3600)
                 continue
+            
+            # ========== FIRST RUN OF DAY: REFRESH YESTERDAY ==========
+            if is_first_run_of_day and api_calls_this_hour < MAX_CALLS_PER_HOUR:
+                print(f"\n🌅 FIRST RUN OF DAY - REFRESHING YESTERDAY ({yesterday})")
+                print("=" * 60)
+                print("📌 Purpose: Ensure yesterday's data is complete (sleep, HRV, etc. finalize late)")
+                
+                # Fetch yesterday's 4 daily metrics (Phase 3 style)
+                yesterday_endpoints = [
+                    ("Sleep", f"https://api.fitbit.com/1.2/user/-/sleep/date/{yesterday}.json"),
+                    ("HRV", f"https://api.fitbit.com/1/user/-/hrv/date/{yesterday}.json"),
+                    ("Breathing", f"https://api.fitbit.com/1/user/-/br/date/{yesterday}.json"),
+                    ("Temperature", f"https://api.fitbit.com/1/user/-/temp/skin/date/{yesterday}.json"),
+                ]
+                
+                yesterday_success = 0
+                for metric_name, endpoint in yesterday_endpoints:
+                    if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
+                        break
+                    
+                    try:
+                        response = requests.get(endpoint, headers=headers, timeout=10)
+                        api_calls_this_hour += 1
+                        
+                        if response.status_code == 429:
+                            print(f"❌ Rate limit hit while fetching yesterday's {metric_name}")
+                            break
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            
+                            # Cache based on metric type
+                            if metric_name == "Sleep" and 'sleep' in data:
+                                for sleep_record in data['sleep']:
+                                    if sleep_record.get('isMainSleep', True):
+                                        sleep_score = None
+                                        if 'sleepScore' in sleep_record and isinstance(sleep_record['sleepScore'], dict):
+                                            sleep_score = sleep_record['sleepScore'].get('overall')
+                                        if sleep_score is None and 'efficiency' in sleep_record:
+                                            sleep_score = sleep_record['efficiency']
+                                        
+                                        if sleep_score is not None:
+                                            cache.set_sleep_score(
+                                                date=yesterday,
+                                                sleep_score=sleep_score,
+                                                duration_minutes=sleep_record.get('duration', 0) // 60000,
+                                                deep_minutes=sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes', 0),
+                                                light_minutes=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes', 0),
+                                                rem_minutes=sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes', 0),
+                                                awake_minutes=sleep_record.get('levels', {}).get('summary', {}).get('wake', {}).get('minutes', 0)
+                                            )
+                                            yesterday_success += 1
+                                            print(f"✅ Yesterday's Sleep cached")
+                            
+                            elif metric_name == "HRV" and 'hrv' in data:
+                                for hrv_entry in data['hrv']:
+                                    if 'value' in hrv_entry and 'dailyRmssd' in hrv_entry['value']:
+                                        cache.set_advanced_metrics(
+                                            date=yesterday,
+                                            hrv=hrv_entry['value']['dailyRmssd'],
+                                            breathing_rate=None,
+                                            temperature=None
+                                        )
+                                        yesterday_success += 1
+                                        print(f"✅ Yesterday's HRV cached")
+                            
+                            elif metric_name == "Breathing" and 'br' in data:
+                                for br_entry in data['br']:
+                                    if 'value' in br_entry and 'breathingRate' in br_entry['value']:
+                                        cache.set_advanced_metrics(
+                                            date=yesterday,
+                                            hrv=None,
+                                            breathing_rate=br_entry['value']['breathingRate'],
+                                            temperature=None
+                                        )
+                                        yesterday_success += 1
+                                        print(f"✅ Yesterday's Breathing Rate cached")
+                            
+                            elif metric_name == "Temperature" and 'tempSkin' in data:
+                                for temp_entry in data['tempSkin']:
+                                    if 'value' in temp_entry and 'nightlyRelative' in temp_entry['value']:
+                                        cache.set_advanced_metrics(
+                                            date=yesterday,
+                                            hrv=None,
+                                            breathing_rate=None,
+                                            temperature=temp_entry['value']['nightlyRelative']
+                                        )
+                                        yesterday_success += 1
+                                        print(f"✅ Yesterday's Temperature cached")
+                    
+                    except Exception as e:
+                        print(f"⚠️ Error fetching yesterday's {metric_name}: {e}")
+                        continue
+                
+                print(f"📊 YESTERDAY REFRESH: {yesterday_success}/4 metrics updated")
+                print(f"💰 API Calls Used: {api_calls_this_hour}/{MAX_CALLS_PER_HOUR}")
+                print("=" * 60)
             
             # ========== PHASE 2 & 3 LOOP ==========
             while api_calls_this_hour < MAX_CALLS_PER_HOUR:
