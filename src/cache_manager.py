@@ -142,6 +142,7 @@ class FitbitCache:
                   start_time, sleep_data_json))
             conn.commit()
             conn.close()
+            print(f"💾 Cached sleep score for {date}: {sleep_score}")
     
     def get_sleep_data(self, date: str) -> Optional[Dict]:
         """Get all cached sleep data for a specific date"""

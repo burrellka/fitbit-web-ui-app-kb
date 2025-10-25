@@ -503,7 +503,9 @@ def background_cache_builder(access_token: str):
                                 phase3_success += 1
                                 
                         except Exception as e:
-                            pass
+                            print(f"❌ Error caching {metric_name} for {date_str}: {e}")
+                            import traceback
+                            traceback.print_exc()
                 
                 print(f"✅ Phase 3 Block Complete: {phase3_success} metric-days cached")
                 print(f"📊 API Budget Remaining: {MAX_CALLS_PER_HOUR - api_calls_this_hour}")
