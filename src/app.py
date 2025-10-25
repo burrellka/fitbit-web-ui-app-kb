@@ -518,18 +518,24 @@ def background_cache_builder(access_token: str):
                     break
             
             # Hourly cycle complete (or rate limit hit)
+            cycle_end_time = datetime.now().isoformat()
+            
             if rate_limit_hit:
                 print(f"\n{'='*60}")
                 print(f"⏸️ RATE LIMIT HIT - CYCLE PAUSED")
                 print(f"📊 API Calls Made Before Rate Limit: {api_calls_this_hour}")
                 print(f"⏰ Sleeping 1 hour until {(datetime.now() + timedelta(hours=1)).strftime('%H:%M:%S')}")
                 print(f"{'='*60}\n")
+                cache.set_metadata('last_cache_run_time', cycle_end_time)
+                cache.set_metadata('last_cache_run_status', f'⏸️ Rate limit hit after {api_calls_this_hour} calls')
             else:
                 print(f"\n{'='*60}")
                 print(f"✅ HOURLY CYCLE COMPLETE")
                 print(f"📊 Total API Calls This Hour: {api_calls_this_hour}")
                 print(f"⏰ Next cycle in 1 hour at {(datetime.now() + timedelta(hours=1)).strftime('%H:%M:%S')}")
                 print(f"{'='*60}\n")
+                cache.set_metadata('last_cache_run_time', cycle_end_time)
+                cache.set_metadata('last_cache_run_status', f'✅ Success - {api_calls_this_hour} calls made')
             
             # Wait 1 hour before next cycle
             time.sleep(3600)
@@ -949,25 +955,6 @@ app.layout = html.Div(children=[
                 'box-shadow': '0 2px 4px rgba(0,0,0,0.1)', 'transition': 'all 0.2s'
             }),
         ]),
-    ]),
-    html.Div(style={'text-align': 'center', 'margin-top': '15px', 'padding': '10px', 'background-color': '#e8f5e9', 'border-radius': '5px', 'max-width': '600px', 'margin-left': 'auto', 'margin-right': 'auto'}, children=[
-        html.Span("✨ Advanced Metrics (HRV, Breathing Rate, Temperature) enabled with smart caching", 
-                  style={'font-size': '13px', 'color': '#2e7d32', 'font-weight': 'bold'})
-    ]),
-    html.Div(style={'text-align': 'center', 'margin-top': '10px', 'padding': '16px', 'background-color': '#f8d7da', 'border': '2px solid #f5c6cb', 'border-radius': '8px', 'max-width': '750px', 'margin-left': 'auto', 'margin-right': 'auto', 'box-shadow': '0 2px 8px rgba(0,0,0,0.1)'}, children=[
-        html.Div(style={'display': 'flex', 'align-items': 'center', 'justify-content': 'center', 'margin-bottom': '8px'}, children=[
-            html.Span("🚨 ", style={'font-size': '24px', 'margin-right': '8px'}),
-            html.Strong("CRITICAL: Sleep Scores Showing 89 Instead of 80?", style={'color': '#721c24', 'font-size': '16px'})
-        ]),
-        html.Div(style={'text-align': 'center'}, children=[
-            html.Span("Old efficiency values are in your cache! ", style={'color': '#721c24', 'font-size': '14px'}),
-            html.Strong("YOU MUST FLUSH CACHE", style={'color': '#dc3545', 'font-size': '15px', 'text-decoration': 'underline'}),
-            html.Span(" to clear old data!", style={'color': '#721c24', 'font-size': '14px'}),
-            html.Br(),
-            html.Span("Click ", style={'color': '#721c24', 'font-size': '13px', 'margin-top': '6px'}),
-            html.Strong("'🗑️ Flush Cache'", style={'color': '#dc3545', 'font-size': '14px'}),
-            html.Span(" button above, wait 30 sec, then generate a new report.", style={'color': '#721c24', 'font-size': '13px'})
-        ])
     ]),
     dcc.Location(id="location"),
     dcc.Store(id="oauth-token", storage_type='session'),  # Store OAuth token in session storage
@@ -1433,7 +1420,65 @@ def update_cache_status(n):
             ]),
         ])
         
-        return header_status, metrics_grid
+        # Cache Builder Status (Last Run & Next Run)
+        from datetime import datetime
+        last_run_time = cache.get_metadata('last_cache_run_time')
+        last_run_status = cache.get_metadata('last_cache_run_status') or 'Never run'
+        
+        if last_run_time:
+            try:
+                last_run_dt = datetime.fromisoformat(last_run_time)
+                last_run_display = last_run_dt.strftime('%Y-%m-%d %I:%M:%S %p')
+                # Calculate next run (1 hour from last run)
+                next_run_dt = last_run_dt + timedelta(hours=1)
+                next_run_display = next_run_dt.strftime('%Y-%m-%d %I:%M:%S %p')
+                
+                # Check if next run is in the past (meaning it should be running now or soon)
+                now = datetime.now()
+                if now >= next_run_dt:
+                    next_run_display += " (Running now)"
+                    next_run_color = "#4caf50"
+                else:
+                    time_until = next_run_dt - now
+                    minutes_until = int(time_until.total_seconds() / 60)
+                    next_run_display += f" (in {minutes_until} min)"
+                    next_run_color = "#2196f3"
+            except:
+                last_run_display = last_run_time
+                next_run_display = "Unknown"
+                next_run_color = "#999"
+        else:
+            last_run_display = "Never"
+            next_run_display = "Waiting for first run"
+            next_run_color = "#ff9800"
+        
+        cache_builder_status = html.Div(style={'margin-top': '30px', 'padding': '20px', 'background-color': '#34495e', 'border-radius': '8px', 'border-top': '3px solid #9b59b6'}, children=[
+            html.H4("🤖 Automated Cache Builder Status", style={'color': 'white', 'margin-bottom': '15px', 'text-align': 'center'}),
+            html.Div(style={'display': 'grid', 'grid-template-columns': '1fr 1fr', 'gap': '20px'}, children=[
+                # Last Run
+                html.Div(style={'background-color': '#2c3e50', 'padding': '15px', 'border-radius': '6px'}, children=[
+                    html.Div(style={'display': 'flex', 'align-items': 'center', 'margin-bottom': '8px'}, children=[
+                        html.Span("⏱️", style={'font-size': '20px', 'margin-right': '8px'}),
+                        html.H6("Last Cache Run", style={'color': 'white', 'margin': '0'})
+                    ]),
+                    html.P(last_run_display, style={'color': '#3498db', 'font-size': '14px', 'margin': '5px 0'}),
+                    html.P(f"Status: {last_run_status}", style={'color': '#bdc3c7', 'font-size': '12px', 'margin': '0'})
+                ]),
+                # Next Run
+                html.Div(style={'background-color': '#2c3e50', 'padding': '15px', 'border-radius': '6px'}, children=[
+                    html.Div(style={'display': 'flex', 'align-items': 'center', 'margin-bottom': '8px'}, children=[
+                        html.Span("⏰", style={'font-size': '20px', 'margin-right': '8px'}),
+                        html.H6("Next Cache Run", style={'color': 'white', 'margin': '0'})
+                    ]),
+                    html.P(next_run_display, style={'color': next_run_color, 'font-size': '14px', 'font-weight': 'bold', 'margin': '5px 0'}),
+                    html.P("Auto-syncs every hour", style={'color': '#bdc3c7', 'font-size': '12px', 'margin': '0'})
+                ]),
+            ])
+        ])
+        
+        full_display = html.Div([metrics_grid, cache_builder_status])
+        
+        return header_status, full_display
         
     except Exception as e:
         error_msg = html.Span(f"Cache status unavailable: {e}", style={'color': '#999'})
