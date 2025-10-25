@@ -1259,8 +1259,11 @@ def authorize(n_clicks):
     if n_clicks :
         client_id = os.environ['CLIENT_ID']
         redirect_uri = os.environ['REDIRECT_URL']
-        scope = 'profile activity cardio_fitness heartrate sleep weight oxygen_saturation respiratory_rate temperature location'
-        auth_url = f'https://www.fitbit.com/oauth2/authorize?scope={scope}&client_id={client_id}&response_type=code&prompt=none&redirect_uri={redirect_uri}'
+        # CRITICAL: 'settings' scope is REQUIRED for official Sleep Score (sleepScore.overall)
+        # Without it, API only returns efficiency, not the actual score
+        scope = 'profile activity settings heartrate sleep cardio_fitness weight oxygen_saturation respiratory_rate temperature location'
+        # Force consent screen to reappear to grant new scopes
+        auth_url = f'https://www.fitbit.com/oauth2/authorize?scope={scope}&client_id={client_id}&response_type=code&prompt=consent&redirect_uri={redirect_uri}'
         return auth_url
     return dash.no_update
 
