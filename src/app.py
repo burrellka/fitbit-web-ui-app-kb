@@ -177,6 +177,7 @@ def background_cache_builder(access_token: str):
             end_date_str = end_date.strftime('%Y-%m-%d')
             
             phase1_calls = 0
+            rate_limit_hit = False  # Flag to track if we hit rate limit
             
             # These endpoints support date ranges - very efficient!
             range_endpoints = [
@@ -199,13 +200,15 @@ def background_cache_builder(access_token: str):
                 try:
                     print(f"📥 Fetching {metric_name}... ", end="")
                     response = requests.get(endpoint, headers=headers, timeout=15)
-                    api_calls_this_hour += 1
-                    phase1_calls += 1
                     
                     if response.status_code == 429:
                         print(f"❌ Rate limit hit!")
+                        rate_limit_hit = True
                         break
                     
+                    # Only count successful calls
+                    api_calls_this_hour += 1
+                    phase1_calls += 1
                     print(f"✅ Success ({response.status_code})")
                     # Data is cached automatically by report generation logic
                     
@@ -214,6 +217,16 @@ def background_cache_builder(access_token: str):
             
             print(f"✅ Phase 1 Complete: {phase1_calls} API calls")
             print(f"📊 API Budget Remaining: {MAX_CALLS_PER_HOUR - api_calls_this_hour}")
+            
+            # If rate limit hit, stop immediately and wait
+            if rate_limit_hit:
+                print("\n" + "="*60)
+                print("⏸️ RATE LIMIT (429) DETECTED!")
+                print("🛑 Stopping ALL API calls immediately")
+                print(f"⏰ Waiting 1 hour until {(datetime.now() + timedelta(hours=1)).strftime('%H:%M:%S')}")
+                print("="*60 + "\n")
+                time.sleep(3600)
+                continue
             
             if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
                 print("⏸️ Hourly limit reached. Waiting 1 hour...")
@@ -241,11 +254,14 @@ def background_cache_builder(access_token: str):
                     
                     try:
                         response = requests.get(endpoint, headers=headers, timeout=10)
-                        api_calls_this_hour += 1
                         
                         if response.status_code == 429:
                             print(f"❌ Rate limit hit while fetching yesterday's {metric_name}")
+                            rate_limit_hit = True
                             break
+                        
+                        # Only count successful calls
+                        api_calls_this_hour += 1
                         
                         if response.status_code == 200:
                             data = response.json()
@@ -316,9 +332,19 @@ def background_cache_builder(access_token: str):
                 print(f"📊 YESTERDAY REFRESH: {yesterday_success}/4 metrics updated")
                 print(f"💰 API Calls Used: {api_calls_this_hour}/{MAX_CALLS_PER_HOUR}")
                 print("=" * 60)
+                
+                # Check if rate limit was hit during yesterday refresh
+                if rate_limit_hit:
+                    print("\n" + "="*60)
+                    print("⏸️ RATE LIMIT (429) DETECTED!")
+                    print("🛑 Stopping ALL API calls immediately")
+                    print(f"⏰ Waiting 1 hour until {(datetime.now() + timedelta(hours=1)).strftime('%H:%M:%S')}")
+                    print("="*60 + "\n")
+                    time.sleep(3600)
+                    continue
             
             # ========== PHASE 2 & 3 LOOP ==========
-            while api_calls_this_hour < MAX_CALLS_PER_HOUR:
+            while api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
                 # PHASE 2: 30-Day Cardio Fitness Blocks
                 print(f"\n📍 PHASE 2: Cardio Fitness (30-day blocks)")
                 print("-" * 60)
@@ -341,12 +367,14 @@ def background_cache_builder(access_token: str):
                         cf_endpoint = f"https://api.fitbit.com/1/user/-/cardioscore/date/{block_start.strftime('%Y-%m-%d')}/{block_end.strftime('%Y-%m-%d')}.json"
                         print(f"📥 Fetching Cardio Fitness {block_start.strftime('%m/%d')} to {block_end.strftime('%m/%d')}... ", end="")
                         response = requests.get(cf_endpoint, headers=headers, timeout=15)
-                        api_calls_this_hour += 1
                         
                         if response.status_code == 429:
                             print(f"❌ Rate limit!")
+                            rate_limit_hit = True
                             break
                         
+                        # Only count successful calls
+                        api_calls_this_hour += 1
                         print(f"✅ ({response.status_code})")
                         cardio_fetched = True
                         break  # Only do one 30-day block per Phase 2 iteration
@@ -359,6 +387,10 @@ def background_cache_builder(access_token: str):
                     print("✅ All Cardio Fitness blocks cached")
                 
                 print(f"📊 API Budget Remaining: {MAX_CALLS_PER_HOUR - api_calls_this_hour}")
+                
+                # Break if rate limit hit
+                if rate_limit_hit:
+                    break
                 
                 if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
                     break
@@ -408,11 +440,14 @@ def background_cache_builder(access_token: str):
                         
                         try:
                             response = requests.get(endpoint, headers=headers, timeout=10)
-                            api_calls_this_hour += 1
                             
                             if response.status_code == 429:
                                 print(f"❌ Rate limit hit at {date_str}")
+                                rate_limit_hit = True
                                 break
+                            
+                            # Only count successful calls
+                            api_calls_this_hour += 1
                             
                             if response.status_code == 200:
                                 data = response.json()
@@ -467,6 +502,10 @@ def background_cache_builder(access_token: str):
                 print(f"✅ Phase 3 Block Complete: {phase3_success} metric-days cached")
                 print(f"📊 API Budget Remaining: {MAX_CALLS_PER_HOUR - api_calls_this_hour}")
                 
+                # Break if rate limit hit
+                if rate_limit_hit:
+                    break
+                
                 if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
                     break
                 
@@ -478,12 +517,19 @@ def background_cache_builder(access_token: str):
                     print(f"\n⏸️ Not enough budget for another cycle ({MAX_CALLS_PER_HOUR - api_calls_this_hour} remaining)")
                     break
             
-            # Hourly cycle complete
-            print(f"\n{'='*60}")
-            print(f"✅ HOURLY CYCLE COMPLETE")
-            print(f"📊 Total API Calls This Hour: {api_calls_this_hour}")
-            print(f"⏰ Next cycle in 1 hour at {(datetime.now() + timedelta(hours=1)).strftime('%H:%M:%S')}")
-            print(f"{'='*60}\n")
+            # Hourly cycle complete (or rate limit hit)
+            if rate_limit_hit:
+                print(f"\n{'='*60}")
+                print(f"⏸️ RATE LIMIT HIT - CYCLE PAUSED")
+                print(f"📊 API Calls Made Before Rate Limit: {api_calls_this_hour}")
+                print(f"⏰ Sleeping 1 hour until {(datetime.now() + timedelta(hours=1)).strftime('%H:%M:%S')}")
+                print(f"{'='*60}\n")
+            else:
+                print(f"\n{'='*60}")
+                print(f"✅ HOURLY CYCLE COMPLETE")
+                print(f"📊 Total API Calls This Hour: {api_calls_this_hour}")
+                print(f"⏰ Next cycle in 1 hour at {(datetime.now() + timedelta(hours=1)).strftime('%H:%M:%S')}")
+                print(f"{'='*60}\n")
             
             # Wait 1 hour before next cycle
             time.sleep(3600)
