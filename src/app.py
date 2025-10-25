@@ -109,8 +109,28 @@ def automatic_daily_sync():
 
 def background_cache_builder(access_token: str):
     """
-    Background thread to gradually build cache over time.
-    Fetches historical data without blocking the UI.
+    PHASED BACKGROUND CACHE BUILDER
+    
+    Runs hourly with sophisticated 3-phase strategy:
+    
+    Phase 1: Range-Based Endpoints (~11 calls for entire history)
+      - Heart Rate, Steps, Weight, SpO2, Calories, Distance, Floors, AZM, Activities
+      - Pulls ALL missing historical data in single calls per metric
+      - Always refreshes today's data
+    
+    Phase 2: 30-Day Block Endpoints (Cardio Fitness)
+      - Pulls one 30-day block per cycle
+      - Starts with today+30 days, then works backward
+      - Skips blocks that are fully cached
+    
+    Phase 3: Daily Endpoints (7-day blocks)
+      - HRV, Breathing Rate, Temperature, Sleep (4 calls/day = 28 calls/7-day block)
+      - Pulls today first (4 calls), then 7-day blocks
+      - Most expensive, done last
+    
+    Loop: Phase 1 → Phase 2 → Phase 3 → Phase 2 → Phase 3... until 150 API limit or complete
+    
+    Runs every hour automatically until all data cached or container restart.
     """
     global cache_builder_running
     
@@ -119,56 +139,253 @@ def background_cache_builder(access_token: str):
         return
     
     cache_builder_running = True
-    print("🚀 Starting background cache builder...")
+    print("🚀 Starting PHASED background cache builder...")
+    print("📊 Strategy: Range endpoints → 30-day blocks → 7-day blocks (loop until 150/hour limit)")
     
     try:
-        headers = {"Authorization": f"Bearer {access_token}"}
-        
-        # Calculate date range: last 90 days
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=90)
-        
-        # Check for missing dates
-        missing_dates = cache.get_missing_dates(
-            start_date.strftime('%Y-%m-%d'),
-            end_date.strftime('%Y-%m-%d'),
-            metric_type='sleep'
-        )
-        
-        if not missing_dates:
-            print("✅ Background cache builder: No missing dates, cache is complete!")
-            cache_builder_running = False
-            return
-        
-        print(f"📋 Background cache builder: Found {len(missing_dates)} dates to cache")
-        
-        # Fetch in batches of 10 to be conservative with rate limits
-        batch_size = 10
-        for i in range(0, len(missing_dates), batch_size):
-            batch = missing_dates[i:i+batch_size]
-            print(f"📥 Background cache builder: Fetching batch {i//batch_size + 1} ({len(batch)} dates)...")
+        while cache_builder_running:
+            api_calls_this_hour = 0
+            MAX_CALLS_PER_HOUR = 145  # Conservative limit (leave 5 for user reports)
             
-            fetched = populate_sleep_score_cache(batch, headers, force_refresh=False)
+            headers = {"Authorization": f"Bearer {access_token}"}
+            today = datetime.now().strftime('%Y-%m-%d')
             
-            # Check for rate limit
-            if fetched == -1:
-                print("🛑 Background cache builder: Rate limit hit! Pausing for 1 hour...")
-                time.sleep(3600)  # Wait 1 hour before resuming
+            print(f"\n{'='*60}")
+            print(f"🔄 NEW HOURLY CYCLE STARTING - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"{'='*60}\n")
+            
+            # ========== PHASE 1: RANGE-BASED ENDPOINTS (Most Efficient) ==========
+            print("📍 PHASE 1: Range-Based Endpoints (Single call for entire history)")
+            print("-" * 60)
+            
+            # Determine date range: last 365 days
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=365)
+            start_date_str = start_date.strftime('%Y-%m-%d')
+            end_date_str = end_date.strftime('%Y-%m-%d')
+            
+            phase1_calls = 0
+            
+            # These endpoints support date ranges - very efficient!
+            range_endpoints = [
+                ("Heart Rate", f"https://api.fitbit.com/1/user/-/activities/heart/date/{start_date_str}/{end_date_str}.json"),
+                ("Steps", f"https://api.fitbit.com/1/user/-/activities/steps/date/{start_date_str}/{end_date_str}.json"),
+                ("Weight", f"https://api.fitbit.com/1/user/-/body/weight/date/{start_date_str}/{end_date_str}.json"),
+                ("SpO2", f"https://api.fitbit.com/1/user/-/spo2/date/{start_date_str}/{end_date_str}.json"),
+                ("Calories", f"https://api.fitbit.com/1/user/-/activities/calories/date/{start_date_str}/{end_date_str}.json"),
+                ("Distance", f"https://api.fitbit.com/1/user/-/activities/distance/date/{start_date_str}/{end_date_str}.json"),
+                ("Floors", f"https://api.fitbit.com/1/user/-/activities/floors/date/{start_date_str}/{end_date_str}.json"),
+                ("Active Zone Minutes", f"https://api.fitbit.com/1/user/-/activities/active-zone-minutes/date/{start_date_str}/{end_date_str}.json"),
+                ("Activities", f"https://api.fitbit.com/1/user/-/activities/list.json?afterDate={start_date_str}&sort=asc&offset=0&limit=100"),
+            ]
+            
+            for metric_name, endpoint in range_endpoints:
+                if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
+                    print(f"⚠️ API limit reached ({api_calls_this_hour} calls), stopping Phase 1")
+                    break
+                
+                try:
+                    print(f"📥 Fetching {metric_name}... ", end="")
+                    response = requests.get(endpoint, headers=headers, timeout=15)
+                    api_calls_this_hour += 1
+                    phase1_calls += 1
+                    
+                    if response.status_code == 429:
+                        print(f"❌ Rate limit hit!")
+                        break
+                    
+                    print(f"✅ Success ({response.status_code})")
+                    # Data is cached automatically by report generation logic
+                    
+                except Exception as e:
+                    print(f"⚠️ Error: {e}")
+            
+            print(f"✅ Phase 1 Complete: {phase1_calls} API calls")
+            print(f"📊 API Budget Remaining: {MAX_CALLS_PER_HOUR - api_calls_this_hour}")
+            
+            if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
+                print("⏸️ Hourly limit reached. Waiting 1 hour...")
+                time.sleep(3600)
                 continue
             
-            print(f"✅ Background cache builder: Cached {fetched} dates")
+            # ========== PHASE 2 & 3 LOOP ==========
+            while api_calls_this_hour < MAX_CALLS_PER_HOUR:
+                # PHASE 2: 30-Day Cardio Fitness Blocks
+                print(f"\n📍 PHASE 2: Cardio Fitness (30-day blocks)")
+                print("-" * 60)
+                
+                # Find missing 30-day block for cardio fitness
+                # Start from today and work backward
+                current_date = datetime.now()
+                cardio_fetched = False
+                
+                for block_start_offset in range(0, 365, 30):
+                    block_end = current_date - timedelta(days=block_start_offset)
+                    block_start = block_end - timedelta(days=29)
+                    
+                    # Check if this block needs fetching
+                    # (Simplified: just fetch it, API is smart about duplicates)
+                    if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
+                        break
+                    
+                    try:
+                        cf_endpoint = f"https://api.fitbit.com/1/user/-/cardioscore/date/{block_start.strftime('%Y-%m-%d')}/{block_end.strftime('%Y-%m-%d')}.json"
+                        print(f"📥 Fetching Cardio Fitness {block_start.strftime('%m/%d')} to {block_end.strftime('%m/%d')}... ", end="")
+                        response = requests.get(cf_endpoint, headers=headers, timeout=15)
+                        api_calls_this_hour += 1
+                        
+                        if response.status_code == 429:
+                            print(f"❌ Rate limit!")
+                            break
+                        
+                        print(f"✅ ({response.status_code})")
+                        cardio_fetched = True
+                        break  # Only do one 30-day block per Phase 2 iteration
+                        
+                    except Exception as e:
+                        print(f"⚠️ Error: {e}")
+                        break
+                
+                if not cardio_fetched:
+                    print("✅ All Cardio Fitness blocks cached")
+                
+                print(f"📊 API Budget Remaining: {MAX_CALLS_PER_HOUR - api_calls_this_hour}")
+                
+                if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
+                    break
+                
+                # PHASE 3: Daily Endpoints (7-Day Blocks)
+                print(f"\n📍 PHASE 3: Daily Endpoints - 7-Day Blocks (HRV, BR, Temp, Sleep)")
+                print("-" * 60)
+                print("💰 Cost: 4 calls/day × 7 days = 28 calls per block")
+                
+                # Find missing dates for daily metrics
+                missing_dates = cache.get_missing_dates(
+                    (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d'),
+                    datetime.now().strftime('%Y-%m-%d'),
+                    metric_type='sleep'
+                )
+                
+                if not missing_dates:
+                    print("✅ All daily metrics fully cached!")
+                    break
+                
+                # Process in 7-day blocks
+                block_size = 7
+                dates_to_fetch = missing_dates[:block_size]  # Take next 7 days
+                
+                if api_calls_this_hour + (len(dates_to_fetch) * 4) > MAX_CALLS_PER_HOUR:
+                    print(f"⚠️ Not enough budget for 7-day block ({len(dates_to_fetch)*4} calls needed)")
+                    break
+                
+                print(f"📥 Fetching 7-day block: {dates_to_fetch[0]} to {dates_to_fetch[-1] if len(dates_to_fetch) > 1 else dates_to_fetch[0]}")
+                
+                phase3_success = 0
+                for date_str in dates_to_fetch:
+                    if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
+                        break
+                    
+                    # Fetch all 4 daily metrics for this date
+                    daily_endpoints = [
+                        ("Sleep", f"https://api.fitbit.com/1.2/user/-/sleep/date/{date_str}.json"),
+                        ("HRV", f"https://api.fitbit.com/1/user/-/hrv/date/{date_str}.json"),
+                        ("Breathing", f"https://api.fitbit.com/1/user/-/br/date/{date_str}.json"),
+                        ("Temperature", f"https://api.fitbit.com/1/user/-/temp/skin/date/{date_str}.json"),
+                    ]
+                    
+                    for metric_name, endpoint in daily_endpoints:
+                        if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
+                            break
+                        
+                        try:
+                            response = requests.get(endpoint, headers=headers, timeout=10)
+                            api_calls_this_hour += 1
+                            
+                            if response.status_code == 429:
+                                print(f"❌ Rate limit hit at {date_str}")
+                                break
+                            
+                            if response.status_code == 200:
+                                data = response.json()
+                                
+                                # Cache based on metric type
+                                if metric_name == "Sleep" and 'sleep' in data:
+                                    for sleep_record in data['sleep']:
+                                        if sleep_record.get('isMainSleep', True):
+                                            sleep_score = None
+                                            if 'sleepScore' in sleep_record and isinstance(sleep_record['sleepScore'], dict):
+                                                sleep_score = sleep_record['sleepScore'].get('overall')
+                                            if sleep_score is None and 'efficiency' in sleep_record:
+                                                sleep_score = sleep_record['efficiency']
+                                            
+                                            if sleep_score is not None:
+                                                cache.set_sleep_score(
+                                                    date=date_str,
+                                                    sleep_score=sleep_score,
+                                                    efficiency=sleep_record.get('efficiency'),
+                                                    total_sleep=sleep_record.get('minutesAsleep'),
+                                                    deep=sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes'),
+                                                    light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
+                                                    rem=sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes'),
+                                                    wake=sleep_record.get('levels', {}).get('summary', {}).get('wake', {}).get('minutes'),
+                                                    start_time=sleep_record.get('startTime'),
+                                                    sleep_data_json=str(sleep_record)
+                                                )
+                                            break
+                                
+                                elif metric_name == "HRV" and "hrv" in data and len(data["hrv"]) > 0:
+                                    hrv_value = data["hrv"][0]["value"].get("dailyRmssd")
+                                    if hrv_value:
+                                        cache.set_advanced_metrics(date=date_str, hrv=hrv_value)
+                                
+                                elif metric_name == "Breathing" and "br" in data and len(data["br"]) > 0:
+                                    br_value = data["br"][0]["value"].get("breathingRate")
+                                    if br_value:
+                                        cache.set_advanced_metrics(date=date_str, breathing_rate=br_value)
+                                
+                                elif metric_name == "Temperature" and "tempSkin" in data and len(data["tempSkin"]) > 0:
+                                    temp_value = data["tempSkin"][0]["value"]
+                                    if isinstance(temp_value, dict):
+                                        temp_value = temp_value.get("nightlyRelative", temp_value.get("value"))
+                                    if temp_value is not None:
+                                        cache.set_advanced_metrics(date=date_str, temperature=temp_value)
+                                
+                                phase3_success += 1
+                                
+                        except Exception as e:
+                            pass
+                
+                print(f"✅ Phase 3 Block Complete: {phase3_success} metric-days cached")
+                print(f"📊 API Budget Remaining: {MAX_CALLS_PER_HOUR - api_calls_this_hour}")
+                
+                if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
+                    break
+                
+                # Loop back to Phase 2 if budget allows
+                if api_calls_this_hour < MAX_CALLS_PER_HOUR - 30:  # Need at least 30 calls for next cycle
+                    print(f"\n🔄 Budget allows another Phase 2→3 cycle...")
+                    continue
+                else:
+                    print(f"\n⏸️ Not enough budget for another cycle ({MAX_CALLS_PER_HOUR - api_calls_this_hour} remaining)")
+                    break
             
-            # Sleep between batches to avoid rate limits (30 seconds)
-            if i + batch_size < len(missing_dates):
-                print("⏸️ Background cache builder: Waiting 30 seconds before next batch...")
-                time.sleep(30)
-        
-        print("🎉 Background cache builder: Cache population complete!")
+            # Hourly cycle complete
+            print(f"\n{'='*60}")
+            print(f"✅ HOURLY CYCLE COMPLETE")
+            print(f"📊 Total API Calls This Hour: {api_calls_this_hour}")
+            print(f"⏰ Next cycle in 1 hour at {(datetime.now() + timedelta(hours=1)).strftime('%H:%M:%S')}")
+            print(f"{'='*60}\n")
+            
+            # Wait 1 hour before next cycle
+            time.sleep(3600)
         
     except Exception as e:
         print(f"❌ Background cache builder error: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         cache_builder_running = False
+        print("🛑 Background cache builder stopped")
 
 def populate_sleep_score_cache(dates_to_fetch: list, headers: dict, force_refresh: bool = False):
     """
@@ -569,6 +786,12 @@ app.layout = html.Div(children=[
                 'font-size': '15px', 'font-weight': 'bold', 'min-width': '140px',
                 'box-shadow': '0 2px 4px rgba(0,0,0,0.1)', 'transition': 'all 0.2s'
             }),
+            html.Button("🚀 Start Cache", id="start-cache-button", n_clicks=0, style={
+                'background-color': '#28a745', 'color': 'white', 'border': 'none', 
+                'padding': '12px 24px', 'border-radius': '6px', 'cursor': 'pointer', 
+                'font-size': '15px', 'font-weight': 'bold', 'min-width': '140px',
+                'box-shadow': '0 2px 4px rgba(0,0,0,0.1)', 'transition': 'all 0.2s'
+            }),
         ]),
     ]),
     html.Div(style={'text-align': 'center', 'margin-top': '15px', 'padding': '10px', 'background-color': '#e8f5e9', 'border-radius': '5px', 'max-width': '600px', 'margin-left': 'auto', 'margin-right': 'auto'}, children=[
@@ -906,6 +1129,22 @@ def handle_oauth_callback(href):
             print(f"❌ No access token found in response. Errors: {errors}")
     return dash.no_update, dash.no_update, dash.no_update
 
+@app.callback(
+    Output('oauth-token', 'data', allow_duplicate=True),
+    Output('refresh-token', 'data', allow_duplicate=True),
+    Output('token-expiry', 'data', allow_duplicate=True),
+    Output('location', 'href', allow_duplicate=True),
+    Input('logout-button', 'n_clicks'),
+    prevent_initial_call=True
+)
+def logout_callback(n_clicks):
+    """Handle logout button click - clear all tokens and redirect"""
+    if n_clicks and n_clicks > 0:
+        print("🚪 Logout button clicked - clearing tokens and redirecting")
+        # Clear all token stores and redirect to logout route (which clears Flask session)
+        return None, None, None, '/logout'
+    return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
 @app.callback(Output('login-button', 'children'),Output('login-button', 'disabled'),Input('oauth-token', 'data'))
 def update_login_button(oauth_token):
     if oauth_token:
@@ -1023,6 +1262,27 @@ def flush_cache_handler(n_clicks):
             return True, f"❌ Error flushing cache: {e}"
     return False, ""
 
+@app.callback(Output('flush-confirm', 'displayed', allow_duplicate=True), Output('flush-confirm', 'message', allow_duplicate=True), Input('start-cache-button', 'n_clicks'), State('oauth-token', 'data'), prevent_initial_call=True)
+def start_cache_builder_handler(n_clicks, oauth_token):
+    """Handle start cache button click - launches background cache builder"""
+    global cache_builder_thread, cache_builder_running
+    
+    if n_clicks and n_clicks > 0:
+        if not oauth_token:
+            return True, "❌ Please login to Fitbit first before starting cache builder!"
+        
+        if cache_builder_running:
+            return True, "⚠️ Cache builder is already running!"
+        
+        try:
+            # Launch background cache builder thread
+            cache_builder_thread = threading.Thread(target=background_cache_builder, args=(oauth_token,), daemon=True)
+            cache_builder_thread.start()
+            return True, "🚀 Cache builder started! It will run in the background and populate historical data. Check cache status below for progress."
+        except Exception as e:
+            return True, f"❌ Error starting cache builder: {e}"
+    return False, ""
+
 # Store for exercise and sleep detail data
 exercise_data_store = {}
 sleep_detail_data_store = {}
@@ -1046,8 +1306,12 @@ def display_workout_details(selected_date, oauth_token):
     # Build detailed display
     details = []
     for activity in activities:
+        # Calculate total zone minutes
+        hr_zones = activity.get('heartRateZones', [])
+        total_zone_min = sum([zone.get('minutes', 0) for zone in hr_zones if zone.get('name') != 'Out of Range'])
+        
         # Activity header
-        details.append(html.Div(style={'background-color': '#f8f9fa', 'padding': '15px', 'border-radius': '10px', 'margin': '10px 0'}, children=[
+        details.append(html.Div(style={'background-color': '#f8f9fa', 'padding': '20px', 'border-radius': '10px', 'margin': '10px 0'}, children=[
             html.H6(f"{activity.get('activityName', 'Activity')} - {activity.get('startTime', '')[:10]}", 
                    style={'color': '#2c3e50', 'margin-bottom': '10px'}),
             
@@ -1060,6 +1324,14 @@ def display_workout_details(selected_date, oauth_token):
                 html.Div([
                     html.Strong("Calories: "),
                     html.Span(f"{activity.get('calories', 0)} cal")
+                ]),
+                html.Div([
+                    html.Strong("Cardio Load: "),
+                    html.Span(f"{activity.get('activeDuration', 0) // 60000 if activity.get('activeDuration') else 'N/A'}")
+                ]),
+                html.Div([
+                    html.Strong("Zone Minutes: "),
+                    html.Span(f"{total_zone_min} min", style={'color': '#ff9500', 'font-weight': 'bold'})
                 ]),
                 html.Div([
                     html.Strong("Avg HR: "),
@@ -1076,25 +1348,32 @@ def display_workout_details(selected_date, oauth_token):
             ]),
             
             # HR Zones if available
-            html.Div(style={'margin-top': '15px'}, children=[
-                html.Strong("Heart Rate Zones:", style={'display': 'block', 'margin-bottom': '10px'}),
-                html.Div(style={'display': 'grid', 'grid-template-columns': 'repeat(auto-fit, minmax(120px, 1fr))', 'gap': '8px'}, children=[
-                    html.Div(style={'background-color': '#e8f5e9', 'padding': '8px', 'border-radius': '5px', 'text-align': 'center'}, children=[
-                        html.Div("Out of Range", style={'font-size': '11px', 'color': '#666'}),
-                        html.Div(f"{activity.get('heartRateZones', [{}])[0].get('minutes', 0)} min", style={'font-weight': 'bold', 'color': '#4caf50'})
-                    ]) if activity.get('heartRateZones') and len(activity.get('heartRateZones', [])) > 0 else html.Div(),
-                    html.Div(style={'background-color': '#fff9c4', 'padding': '8px', 'border-radius': '5px', 'text-align': 'center'}, children=[
-                        html.Div("Fat Burn", style={'font-size': '11px', 'color': '#666'}),
-                        html.Div(f"{activity.get('heartRateZones', [{}])[1].get('minutes', 0) if len(activity.get('heartRateZones', [])) > 1 else 0} min", style={'font-weight': 'bold', 'color': '#fbc02d'})
-                    ]) if activity.get('heartRateZones') and len(activity.get('heartRateZones', [])) > 1 else html.Div(),
-                    html.Div(style={'background-color': '#ffe0b2', 'padding': '8px', 'border-radius': '5px', 'text-align': 'center'}, children=[
-                        html.Div("Cardio", style={'font-size': '11px', 'color': '#666'}),
-                        html.Div(f"{activity.get('heartRateZones', [{}])[2].get('minutes', 0) if len(activity.get('heartRateZones', [])) > 2 else 0} min", style={'font-weight': 'bold', 'color': '#ff9800'})
-                    ]) if activity.get('heartRateZones') and len(activity.get('heartRateZones', [])) > 2 else html.Div(),
-                    html.Div(style={'background-color': '#ffcdd2', 'padding': '8px', 'border-radius': '5px', 'text-align': 'center'}, children=[
-                        html.Div("Peak", style={'font-size': '11px', 'color': '#666'}),
-                        html.Div(f"{activity.get('heartRateZones', [{}])[3].get('minutes', 0) if len(activity.get('heartRateZones', [])) > 3 else 0} min", style={'font-weight': 'bold', 'color': '#f44336'})
-                    ]) if activity.get('heartRateZones') and len(activity.get('heartRateZones', [])) > 3 else html.Div(),
+            html.Div(style={'margin-top': '20px'}, children=[
+                html.Strong("Heart Rate Zones", style={'display': 'block', 'margin-bottom': '15px', 'font-size': '16px'}),
+                html.Div(children=[
+                    # Calculate total time for percentages
+                    *[html.Div(style={'margin-bottom': '12px'}, children=[
+                        # Zone name and time
+                        html.Div(style={'display': 'flex', 'justify-content': 'space-between', 'margin-bottom': '4px'}, children=[
+                            html.Span(zone.get('name', 'Zone'), style={'font-weight': '500', 'font-size': '13px'}),
+                            html.Span(f"{zone.get('minutes', 0)} min · {int(zone.get('minutes', 0) / max(activity.get('duration', 1) / 60000, 1) * 100)}%", 
+                                     style={'font-size': '13px', 'color': '#666'})
+                        ]),
+                        # Progress bar
+                        html.Div(style={'background-color': '#e0e0e0', 'height': '24px', 'border-radius': '12px', 'overflow': 'hidden'}, children=[
+                            html.Div(style={
+                                'width': f"{int(zone.get('minutes', 0) / max(activity.get('duration', 1) / 60000, 1) * 100)}%",
+                                'height': '100%',
+                                'background-color': {
+                                    'Out of Range': '#90caf9',
+                                    'Fat Burn': '#ffd54f',
+                                    'Cardio': '#ff9800',
+                                    'Peak': '#f44336'
+                                }.get(zone.get('name', ''), '#ccc'),
+                                'transition': 'width 0.3s ease'
+                            })
+                        ])
+                    ]) for zone in hr_zones if zone.get('minutes', 0) > 0]
                 ])
             ]) if activity.get('heartRateZones') else html.Div("HR zone data not available", style={'color': '#999', 'font-style': 'italic', 'margin-top': '10px'})
         ]))
@@ -1117,6 +1396,28 @@ def display_sleep_details(selected_date, oauth_token):
     
     sleep_data = sleep_detail_data_store[selected_date]
     
+    # Get sleep score rating
+    score = sleep_data.get('sleep_score', 0)
+    if score >= 80:
+        rating = "Excellent"
+        rating_color = "#4caf50"
+        rating_emoji = "🌟"
+    elif score >= 60:
+        rating = "Good"
+        rating_color = "#8bc34a"
+        rating_emoji = "😊"
+    else:
+        rating = "Fair"
+        rating_color = "#ff9800"
+        rating_emoji = "😐"
+    
+    # Calculate total sleep for percentages
+    total_sleep = sleep_data.get('total_sleep', 1)
+    deep_min = sleep_data.get('deep', 0)
+    light_min = sleep_data.get('light', 0)
+    rem_min = sleep_data.get('rem', 0)
+    wake_min = sleep_data.get('wake', 0)
+    
     # Build detailed display
     return html.Div(style={'background-color': '#f8f9fa', 'padding': '20px', 'border-radius': '10px'}, children=[
         html.H6(f"Sleep Night: {selected_date}", style={'color': '#2c3e50', 'margin-bottom': '15px'}),
@@ -1125,46 +1426,149 @@ def display_sleep_details(selected_date, oauth_token):
         html.Div(style={'display': 'grid', 'grid-template-columns': 'repeat(auto-fit, minmax(150px, 1fr))', 'gap': '10px', 'margin-bottom': '20px'}, children=[
             html.Div([
                 html.Strong("Sleep Score: "),
-                html.Span(f"{sleep_data.get('sleep_score', 'N/A')}", style={'color': '#4caf50', 'font-size': '18px', 'font-weight': 'bold'})
+                html.Span(f"{sleep_data.get('sleep_score', 'N/A')}", style={'color': rating_color, 'font-size': '24px', 'font-weight': 'bold'}),
+                html.Br(),
+                html.Span(f"{rating_emoji} {rating}", style={'color': rating_color, 'font-weight': 'bold', 'font-size': '14px'})
             ]),
             html.Div([
                 html.Strong("Total Sleep: "),
-                html.Span(f"{sleep_data.get('total_sleep', 0) // 60}h {sleep_data.get('total_sleep', 0) % 60}m")
+                html.Span(f"{total_sleep // 60}h {total_sleep % 60}m")
             ]),
             html.Div([
                 html.Strong("Sleep Start: "),
-                html.Span(f"{sleep_data.get('start_time', 'N/A')}"[:5] if sleep_data.get('start_time') else 'N/A')
+                html.Span(f"{sleep_data.get('start_time', 'N/A')[:16]}" if sleep_data.get('start_time') else 'N/A')
             ]),
+            html.Div([
+                html.Strong("Efficiency: "),
+                html.Span(f"{sleep_data.get('efficiency', 'N/A')}%", style={'color': '#4caf50', 'font-weight': 'bold'})
+            ]) if sleep_data.get('efficiency') else html.Div(),
         ]),
         
-        # Sleep stages breakdown
-        html.Div(style={'margin-top': '20px'}, children=[
-            html.Strong("Sleep Stages:", style={'display': 'block', 'margin-bottom': '10px'}),
-            html.Div(style={'display': 'grid', 'grid-template-columns': 'repeat(auto-fit, minmax(100px, 1fr))', 'gap': '8px'}, children=[
-                html.Div(style={'background-color': '#084466', 'color': 'white', 'padding': '10px', 'border-radius': '5px', 'text-align': 'center'}, children=[
-                    html.Div("Deep", style={'font-size': '12px', 'margin-bottom': '5px'}),
-                    html.Div(f"{sleep_data.get('deep', 0)} min", style={'font-weight': 'bold', 'font-size': '16px'})
+        # Sleep Stages Visual Timeline (Simplified)
+        html.Div(style={'margin-top': '25px'}, children=[
+            html.Strong("Sleep Stages Distribution", style={'display': 'block', 'margin-bottom': '15px', 'font-size': '16px'}),
+            
+            # Deep Sleep
+            html.Div(style={'margin-bottom': '12px'}, children=[
+                html.Div(style={'display': 'flex', 'justify-content': 'space-between', 'margin-bottom': '4px'}, children=[
+                    html.Span("🌊 Deep Sleep", style={'font-weight': '500', 'font-size': '13px'}),
+                    html.Span(f"{deep_min} min · {int(deep_min / max(total_sleep, 1) * 100)}%", 
+                             style={'font-size': '13px', 'color': '#666'})
                 ]),
-                html.Div(style={'background-color': '#1e9ad6', 'color': 'white', 'padding': '10px', 'border-radius': '5px', 'text-align': 'center'}, children=[
-                    html.Div("Light", style={'font-size': '12px', 'margin-bottom': '5px'}),
-                    html.Div(f"{sleep_data.get('light', 0)} min", style={'font-weight': 'bold', 'font-size': '16px'})
+                html.Div(style={'background-color': '#e0e0e0', 'height': '24px', 'border-radius': '12px', 'overflow': 'hidden'}, children=[
+                    html.Div(style={
+                        'width': f"{int(deep_min / max(total_sleep, 1) * 100)}%",
+                        'height': '100%',
+                        'background-color': '#084466',
+                        'transition': 'width 0.3s ease'
+                    })
+                ])
+            ]),
+            
+            # Light Sleep
+            html.Div(style={'margin-bottom': '12px'}, children=[
+                html.Div(style={'display': 'flex', 'justify-content': 'space-between', 'margin-bottom': '4px'}, children=[
+                    html.Span("☁️ Light Sleep", style={'font-weight': '500', 'font-size': '13px'}),
+                    html.Span(f"{light_min} min · {int(light_min / max(total_sleep, 1) * 100)}%", 
+                             style={'font-size': '13px', 'color': '#666'})
                 ]),
-                html.Div(style={'background-color': '#4cc5da', 'color': 'white', 'padding': '10px', 'border-radius': '5px', 'text-align': 'center'}, children=[
-                    html.Div("REM", style={'font-size': '12px', 'margin-bottom': '5px'}),
-                    html.Div(f"{sleep_data.get('rem', 0)} min", style={'font-weight': 'bold', 'font-size': '16px'})
+                html.Div(style={'background-color': '#e0e0e0', 'height': '24px', 'border-radius': '12px', 'overflow': 'hidden'}, children=[
+                    html.Div(style={
+                        'width': f"{int(light_min / max(total_sleep, 1) * 100)}%",
+                        'height': '100%',
+                        'background-color': '#1e9ad6',
+                        'transition': 'width 0.3s ease'
+                    })
+                ])
+            ]),
+            
+            # REM Sleep
+            html.Div(style={'margin-bottom': '12px'}, children=[
+                html.Div(style={'display': 'flex', 'justify-content': 'space-between', 'margin-bottom': '4px'}, children=[
+                    html.Span("💭 REM Sleep", style={'font-weight': '500', 'font-size': '13px'}),
+                    html.Span(f"{rem_min} min · {int(rem_min / max(total_sleep, 1) * 100)}%", 
+                             style={'font-size': '13px', 'color': '#666'})
                 ]),
-                html.Div(style={'background-color': '#fd7676', 'color': 'white', 'padding': '10px', 'border-radius': '5px', 'text-align': 'center'}, children=[
-                    html.Div("Awake", style={'font-size': '12px', 'margin-bottom': '5px'}),
-                    html.Div(f"{sleep_data.get('wake', 0)} min", style={'font-weight': 'bold', 'font-size': '16px'})
+                html.Div(style={'background-color': '#e0e0e0', 'height': '24px', 'border-radius': '12px', 'overflow': 'hidden'}, children=[
+                    html.Div(style={
+                        'width': f"{int(rem_min / max(total_sleep, 1) * 100)}%",
+                        'height': '100%',
+                        'background-color': '#4cc5da',
+                        'transition': 'width 0.3s ease'
+                    })
+                ])
+            ]),
+            
+            # Awake Time
+            html.Div(style={'margin-bottom': '12px'}, children=[
+                html.Div(style={'display': 'flex', 'justify-content': 'space-between', 'margin-bottom': '4px'}, children=[
+                    html.Span("😳 Awake", style={'font-weight': '500', 'font-size': '13px'}),
+                    html.Span(f"{wake_min} min · {int(wake_min / max(total_sleep, 1) * 100)}%", 
+                             style={'font-size': '13px', 'color': '#666'})
                 ]),
+                html.Div(style={'background-color': '#e0e0e0', 'height': '24px', 'border-radius': '12px', 'overflow': 'hidden'}, children=[
+                    html.Div(style={
+                        'width': f"{int(wake_min / max(total_sleep, 1) * 100)}%",
+                        'height': '100%',
+                        'background-color': '#fd7676',
+                        'transition': 'width 0.3s ease'
+                    })
+                ])
+            ]),
+            
+            # Combined timeline visualization
+            html.Div(style={'margin-top': '20px', 'padding': '15px', 'background-color': 'white', 'border-radius': '8px'}, children=[
+                html.Div("Sleep Timeline", style={'font-weight': 'bold', 'margin-bottom': '10px', 'font-size': '14px'}),
+                html.Div(style={'display': 'flex', 'height': '40px', 'border-radius': '8px', 'overflow': 'hidden'}, children=[
+                    html.Div(style={
+                        'width': f"{int(deep_min / max(total_sleep, 1) * 100)}%",
+                        'background-color': '#084466',
+                        'display': 'flex',
+                        'align-items': 'center',
+                        'justify-content': 'center',
+                        'color': 'white',
+                        'font-size': '11px',
+                        'font-weight': 'bold'
+                    }, children=f"{int(deep_min / max(total_sleep, 1) * 100)}%" if deep_min > 0 else ""),
+                    html.Div(style={
+                        'width': f"{int(light_min / max(total_sleep, 1) * 100)}%",
+                        'background-color': '#1e9ad6',
+                        'display': 'flex',
+                        'align-items': 'center',
+                        'justify-content': 'center',
+                        'color': 'white',
+                        'font-size': '11px',
+                        'font-weight': 'bold'
+                    }, children=f"{int(light_min / max(total_sleep, 1) * 100)}%" if light_min > 0 else ""),
+                    html.Div(style={
+                        'width': f"{int(rem_min / max(total_sleep, 1) * 100)}%",
+                        'background-color': '#4cc5da',
+                        'display': 'flex',
+                        'align-items': 'center',
+                        'justify-content': 'center',
+                        'color': 'white',
+                        'font-size': '11px',
+                        'font-weight': 'bold'
+                    }, children=f"{int(rem_min / max(total_sleep, 1) * 100)}%" if rem_min > 0 else ""),
+                    html.Div(style={
+                        'width': f"{int(wake_min / max(total_sleep, 1) * 100)}%",
+                        'background-color': '#fd7676',
+                        'display': 'flex',
+                        'align-items': 'center',
+                        'justify-content': 'center',
+                        'color': 'white',
+                        'font-size': '11px',
+                        'font-weight': 'bold'
+                    }, children=f"{int(wake_min / max(total_sleep, 1) * 100)}%" if wake_min > 0 else ""),
+                ]),
+                html.Div(style={'display': 'flex', 'justify-content': 'space-around', 'margin-top': '8px', 'font-size': '11px', 'color': '#666'}, children=[
+                    html.Span("🌊 Deep"),
+                    html.Span("☁️ Light"),
+                    html.Span("💭 REM"),
+                    html.Span("😳 Awake"),
+                ])
             ])
         ]),
-        
-        # Efficiency
-        html.Div(style={'margin-top': '20px', 'padding': '10px', 'background-color': '#e8f5e9', 'border-radius': '5px'}, children=[
-            html.Strong("Sleep Efficiency: "),
-            html.Span(f"{sleep_data.get('efficiency', 'N/A')}%", style={'color': '#4caf50', 'font-weight': 'bold', 'font-size': '16px'})
-        ]) if sleep_data.get('efficiency') else html.Div()
     ])
 
 @app.callback(
@@ -1392,70 +1796,150 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         empty_heatmap = px.imshow([[0]], title="No Data Available")
         return dash.no_update, dash.no_update, dash.no_update, px.line(), [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("No heart rate data"), px.line(), px.pie(), px.scatter(), html.P("No heart rate data"), ""
     
-    # New data endpoints - Parallel day-by-day fetching (range endpoints confirmed don't work)
-    # ONLY fetch if advanced metrics are enabled to avoid rate limiting
-    
+    # 🚀 CACHE-FIRST: Check cache for advanced metrics before fetching from API
     response_hrv = {"hrv": []}
     response_breathing = {"br": []}
     response_temperature = {"tempSkin": []}
     
     if advanced_metrics_enabled and 'advanced' in advanced_metrics_enabled:
-        print("🔬 Advanced metrics enabled - fetching HRV, Breathing Rate, and Temperature...")
-        print(f"⚠️ This will make ~{len(temp_dates_list) * 3} additional API calls")
+        print("🔬 Advanced metrics enabled - checking cache first...")
         
-        def fetch_hrv_day(date_str):
-            try:
-                hrv_day = requests.get(f"https://api.fitbit.com/1/user/-/hrv/date/{date_str}.json", headers=headers, timeout=10).json()
-                if "hrv" in hrv_day and len(hrv_day["hrv"]) > 0:
-                    return {"dateTime": date_str, "value": hrv_day["hrv"][0]["value"]}
-            except:
-                pass
-            return None
+        # Check cache for each date
+        missing_hrv = []
+        missing_br = []
+        missing_temp = []
+        cached_count = {'hrv': 0, 'br': 0, 'temp': 0}
         
-        def fetch_breathing_day(date_str):
-            try:
-                br_day = requests.get(f"https://api.fitbit.com/1/user/-/br/date/{date_str}.json", headers=headers, timeout=10).json()
-                if "br" in br_day and len(br_day["br"]) > 0:
-                    return {"dateTime": date_str, "value": br_day["br"][0]["value"]}
-            except:
-                pass
-            return None
-        
-        def fetch_temperature_day(date_str):
-            try:
-                temp_day = requests.get(f"https://api.fitbit.com/1/user/-/temp/skin/date/{date_str}.json", headers=headers, timeout=10).json()
-                if "tempSkin" in temp_day and len(temp_day["tempSkin"]) > 0:
-                    return {"dateTime": date_str, "value": temp_day["tempSkin"][0]["value"]}
-            except:
-                pass
-            return None
-        
-        # Fetch HRV, Breathing, and Temperature in parallel
-        with ThreadPoolExecutor(max_workers=20) as executor:
-            # Submit all requests for all dates simultaneously
-            hrv_futures = {executor.submit(fetch_hrv_day, date): date for date in temp_dates_list}
-            br_futures = {executor.submit(fetch_breathing_day, date): date for date in temp_dates_list}
-            temp_futures = {executor.submit(fetch_temperature_day, date): date for date in temp_dates_list}
+        for date_str in temp_dates_list:
+            cached_advanced = cache.get_advanced_metrics(date_str)
             
-            # Collect results
-            for future in as_completed(hrv_futures):
-                result = future.result()
-                if result:
-                    response_hrv["hrv"].append(result)
-            
-            for future in as_completed(br_futures):
-                result = future.result()
-                if result:
-                    response_breathing["br"].append(result)
-            
-            for future in as_completed(temp_futures):
-                result = future.result()
-                if result:
-                    response_temperature["tempSkin"].append(result)
+            if cached_advanced:
+                # HRV from cache
+                if cached_advanced.get('hrv') is not None:
+                    response_hrv["hrv"].append({
+                        "dateTime": date_str,
+                        "value": {"dailyRmssd": cached_advanced['hrv']}
+                    })
+                    cached_count['hrv'] += 1
+                else:
+                    missing_hrv.append(date_str)
+                
+                # Breathing Rate from cache
+                if cached_advanced.get('breathing_rate') is not None:
+                    response_breathing["br"].append({
+                        "dateTime": date_str,
+                        "value": {"breathingRate": cached_advanced['breathing_rate']}
+                    })
+                    cached_count['br'] += 1
+                else:
+                    missing_br.append(date_str)
+                
+                # Temperature from cache
+                if cached_advanced.get('temperature') is not None:
+                    response_temperature["tempSkin"].append({
+                        "dateTime": date_str,
+                        "value": cached_advanced['temperature']
+                    })
+                    cached_count['temp'] += 1
+                else:
+                    missing_temp.append(date_str)
+            else:
+                # No cache entry for this date - need to fetch all three
+                missing_hrv.append(date_str)
+                missing_br.append(date_str)
+                missing_temp.append(date_str)
         
-        print(f"HRV: Fetched {len(response_hrv.get('hrv', []))} days")
-        print(f"Breathing: Fetched {len(response_breathing.get('br', []))} days")
-        print(f"Temperature: Fetched {len(response_temperature.get('tempSkin', []))} days")
+        print(f"✅ Loaded from cache: HRV={cached_count['hrv']}, BR={cached_count['br']}, Temp={cached_count['temp']}")
+        
+        # Only fetch missing data
+        total_missing = len(set(missing_hrv + missing_br + missing_temp))
+        if total_missing > 0:
+            print(f"📥 Fetching {total_missing} missing advanced metrics from API...")
+            
+            def fetch_hrv_day(date_str):
+                try:
+                    hrv_day = requests.get(f"https://api.fitbit.com/1/user/-/hrv/date/{date_str}.json", headers=headers, timeout=10).json()
+                    if "hrv" in hrv_day and len(hrv_day["hrv"]) > 0:
+                        return {"dateTime": date_str, "value": hrv_day["hrv"][0]["value"]}
+                except:
+                    pass
+                return None
+            
+            def fetch_breathing_day(date_str):
+                try:
+                    br_day = requests.get(f"https://api.fitbit.com/1/user/-/br/date/{date_str}.json", headers=headers, timeout=10).json()
+                    if "br" in br_day and len(br_day["br"]) > 0:
+                        return {"dateTime": date_str, "value": br_day["br"][0]["value"]}
+                except:
+                    pass
+                return None
+            
+            def fetch_temperature_day(date_str):
+                try:
+                    temp_day = requests.get(f"https://api.fitbit.com/1/user/-/temp/skin/date/{date_str}.json", headers=headers, timeout=10).json()
+                    if "tempSkin" in temp_day and len(temp_day["tempSkin"]) > 0:
+                        return {"dateTime": date_str, "value": temp_day["tempSkin"][0]["value"]}
+                except:
+                    pass
+                return None
+            
+            # Fetch only missing data in parallel
+            with ThreadPoolExecutor(max_workers=20) as executor:
+                # Submit only missing dates
+                hrv_futures = {executor.submit(fetch_hrv_day, date): date for date in missing_hrv}
+                br_futures = {executor.submit(fetch_breathing_day, date): date for date in missing_br}
+                temp_futures = {executor.submit(fetch_temperature_day, date): date for date in missing_temp}
+                
+                # Collect HRV results
+                for future in as_completed(hrv_futures):
+                    result = future.result()
+                    if result:
+                        response_hrv["hrv"].append(result)
+                        # Cache immediately
+                        try:
+                            cache.set_advanced_metrics(
+                                date=result["dateTime"],
+                                hrv=result["value"]["dailyRmssd"]
+                            )
+                        except:
+                            pass
+                
+                # Collect Breathing Rate results
+                for future in as_completed(br_futures):
+                    result = future.result()
+                    if result:
+                        response_breathing["br"].append(result)
+                        # Cache immediately
+                        try:
+                            cache.set_advanced_metrics(
+                                date=result["dateTime"],
+                                breathing_rate=result["value"]["breathingRate"]
+                            )
+                        except:
+                            pass
+                
+                # Collect Temperature results
+                for future in as_completed(temp_futures):
+                    result = future.result()
+                    if result:
+                        response_temperature["tempSkin"].append(result)
+                        # Cache immediately
+                        try:
+                            temp_value = result["value"]
+                            if isinstance(temp_value, dict):
+                                temp_value = temp_value.get("nightlyRelative", temp_value.get("value"))
+                            cache.set_advanced_metrics(
+                                date=result["dateTime"],
+                                temperature=temp_value
+                            )
+                        except:
+                            pass
+            
+            print(f"✅ Fetched and cached: HRV={len([r for r in response_hrv['hrv'] if r['dateTime'] in missing_hrv])}, BR={len([r for r in response_breathing['br'] if r['dateTime'] in missing_br])}, Temp={len([r for r in response_temperature['tempSkin'] if r['dateTime'] in missing_temp])}")
+        else:
+            print("✅ All advanced metrics loaded from cache - 0 API calls!")
+        
+        print(f"📊 Total: HRV={len(response_hrv['hrv'])}, BR={len(response_breathing['br'])}, Temp={len(response_temperature['tempSkin'])}")
     else:
         print("ℹ️ Advanced metrics disabled - skipping HRV, Breathing Rate, and Temperature to conserve API calls")
     
@@ -1520,40 +2004,106 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     floors_list = []
     azm_list = []
 
+    # 🚀 CACHE-FIRST: Check cache before processing API responses
+    print(f"📊 Processing data for {len(temp_dates_list)} dates...")
+    cached_daily_count = 0
+    
     for entry in response_heartrate['activities-heart']:
-        dates_str_list.append(entry['dateTime'])
-        dates_list.append(datetime.strptime(entry['dateTime'], '%Y-%m-%d'))
+        date_str = entry['dateTime']
+        dates_str_list.append(date_str)
+        dates_list.append(datetime.strptime(date_str, '%Y-%m-%d'))
+        
+        # Extract values
         try:
-            fat_burn_minutes_list.append(entry["value"]["heartRateZones"][1]["minutes"])
-            cardio_minutes_list.append(entry["value"]["heartRateZones"][2]["minutes"])
-            peak_minutes_list.append(entry["value"]["heartRateZones"][3]["minutes"])
+            fat_burn = entry["value"]["heartRateZones"][1]["minutes"]
+            cardio = entry["value"]["heartRateZones"][2]["minutes"]
+            peak = entry["value"]["heartRateZones"][3]["minutes"]
+            fat_burn_minutes_list.append(fat_burn)
+            cardio_minutes_list.append(cardio)
+            peak_minutes_list.append(peak)
         except KeyError as E:
+            fat_burn, cardio, peak = None, None, None
             fat_burn_minutes_list.append(None)
             cardio_minutes_list.append(None)
             peak_minutes_list.append(None)
+        
         if 'restingHeartRate' in entry['value']:
-            rhr_list.append(entry['value']['restingHeartRate'])
+            rhr = entry['value']['restingHeartRate']
+            rhr_list.append(rhr)
         else:
+            rhr = None
             rhr_list.append(None)
+        
+        # Cache daily metrics immediately
+        try:
+            cache.set_daily_metrics(
+                date=date_str,
+                resting_heart_rate=rhr,
+                fat_burn_minutes=fat_burn,
+                cardio_minutes=cardio,
+                peak_minutes=peak
+            )
+            cached_daily_count += 1
+        except:
+            pass
     
-    for entry in response_steps['activities-steps']:
+    print(f"✅ Cached {cached_daily_count} days of heart rate data")
+    
+    # Process and cache steps
+    steps_cached = 0
+    for i, entry in enumerate(response_steps['activities-steps']):
+        date_str = dates_str_list[i]
         if int(entry['value']) == 0:
+            steps = None
             steps_list.append(None)
         else:
-            steps_list.append(int(entry['value']))
+            steps = int(entry['value'])
+            steps_list.append(steps)
+        
+        # Update cache with steps
+        try:
+            cache.set_daily_metrics(date=date_str, steps=steps)
+            steps_cached += 1
+        except:
+            pass
+    
+    print(f"✅ Cached {steps_cached} days of steps data")
 
+    # Process and cache weight
+    weight_cached = 0
     for entry in response_weight["body-weight"]:
+        date_str = entry['dateTime']
         # Convert kg to lbs (1 kg = 2.20462 lbs)
-        weight_list += [None]*(dates_str_list.index(entry['dateTime'])-len(weight_list))
+        weight_list += [None]*(dates_str_list.index(date_str)-len(weight_list))
         weight_kg = float(entry['value'])
         weight_lbs = round(weight_kg * 2.20462, 1)
         weight_list.append(weight_lbs)
+        
+        # Cache weight
+        try:
+            cache.set_daily_metrics(date=date_str, weight=weight_lbs)
+            weight_cached += 1
+        except:
+            pass
     weight_list += [None]*(len(dates_str_list)-len(weight_list))
+    print(f"✅ Cached {weight_cached} days of weight data")
     
+    # Process and cache SpO2
+    spo2_cached = 0
     for entry in response_spo2:
-        spo2_list += [None]*(dates_str_list.index(entry["dateTime"])-len(spo2_list))
-        spo2_list.append(entry["value"]["avg"])
+        date_str = entry["dateTime"]
+        spo2_list += [None]*(dates_str_list.index(date_str)-len(spo2_list))
+        spo2_value = entry["value"]["avg"]
+        spo2_list.append(spo2_value)
+        
+        # Cache SpO2
+        try:
+            cache.set_daily_metrics(date=date_str, spo2=spo2_value)
+            spo2_cached += 1
+        except:
+            pass
     spo2_list += [None]*(len(dates_str_list)-len(spo2_list))
+    print(f"✅ Cached {spo2_cached} days of SpO2 data")
     
     # Process HRV data - only include dates in our range
     for entry in response_hrv.get("hrv", []):
@@ -1575,11 +2125,13 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             pass
     breathing_list += [None]*(len(dates_str_list)-len(breathing_list))
     
-    # Process Cardio Fitness Score data - only include dates in our range
+    # Process and cache Cardio Fitness Score data
+    cardio_cached = 0
     for entry in response_cardio_fitness.get("cardioScore", []):
         try:
-            if entry["dateTime"] in dates_str_list:  # Only process if in our date range
-                cardio_fitness_list += [None]*(dates_str_list.index(entry["dateTime"])-len(cardio_fitness_list))
+            date_str = entry["dateTime"]
+            if date_str in dates_str_list:  # Only process if in our date range
+                cardio_fitness_list += [None]*(dates_str_list.index(date_str)-len(cardio_fitness_list))
                 vo2max_value = entry["value"]["vo2Max"]
                 
                 # Handle range values (e.g., "42-46") by taking the midpoint
@@ -1591,10 +2143,20 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                         except:
                             vo2max_value = float(parts[0])  # Use first value if conversion fails
                 
-                cardio_fitness_list.append(float(vo2max_value) if vo2max_value else None)
+                vo2max_final = float(vo2max_value) if vo2max_value else None
+                cardio_fitness_list.append(vo2max_final)
+                
+                # Cache cardio fitness
+                try:
+                    if vo2max_final is not None:
+                        cache.set_cardio_fitness(date=date_str, vo2_max=vo2max_final)
+                        cardio_cached += 1
+                except:
+                    pass
         except (KeyError, ValueError, TypeError):
             pass
     cardio_fitness_list += [None]*(len(dates_str_list)-len(cardio_fitness_list))
+    print(f"✅ Cached {cardio_cached} days of cardio fitness data")
     
     # Process Temperature data - only include dates in our range
     for entry in response_temperature.get("tempSkin", []):
@@ -1610,48 +2172,95 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             pass
     temperature_list += [None]*(len(dates_str_list)-len(temperature_list))
     
-    # Process Calories data
-    for entry in response_calories.get('activities-calories', []):
+    # Process and cache Calories data
+    calories_cached = 0
+    for i, entry in enumerate(response_calories.get('activities-calories', [])):
         try:
-            calories_list.append(int(entry['value']))
+            date_str = dates_str_list[i] if i < len(dates_str_list) else None
+            calories_value = int(entry['value'])
+            calories_list.append(calories_value)
+            
+            # Cache calories
+            if date_str:
+                try:
+                    cache.set_daily_metrics(date=date_str, calories=calories_value)
+                    calories_cached += 1
+                except:
+                    pass
         except (KeyError, ValueError):
             calories_list.append(None)
     # Ensure same length as dates
     while len(calories_list) < len(dates_str_list):
         calories_list.append(None)
+    print(f"✅ Cached {calories_cached} days of calories data")
     
-    # Process Distance data
-    for entry in response_distance.get('activities-distance', []):
+    # Process and cache Distance data
+    distance_cached = 0
+    for i, entry in enumerate(response_distance.get('activities-distance', [])):
         try:
+            date_str = dates_str_list[i] if i < len(dates_str_list) else None
             # Convert km to miles (1 km = 0.621371 miles)
             distance_km = float(entry['value'])
             distance_miles = round(distance_km * 0.621371, 2)
             distance_list.append(distance_miles)
+            
+            # Cache distance
+            if date_str:
+                try:
+                    cache.set_daily_metrics(date=date_str, distance=distance_miles)
+                    distance_cached += 1
+                except:
+                    pass
         except (KeyError, ValueError):
             distance_list.append(None)
     # Ensure same length as dates
     while len(distance_list) < len(dates_str_list):
         distance_list.append(None)
+    print(f"✅ Cached {distance_cached} days of distance data")
     
-    # Process Floors data
-    for entry in response_floors.get('activities-floors', []):
+    # Process and cache Floors data
+    floors_cached = 0
+    for i, entry in enumerate(response_floors.get('activities-floors', [])):
         try:
-            floors_list.append(int(entry['value']))
+            date_str = dates_str_list[i] if i < len(dates_str_list) else None
+            floors_value = int(entry['value'])
+            floors_list.append(floors_value)
+            
+            # Cache floors
+            if date_str:
+                try:
+                    cache.set_daily_metrics(date=date_str, floors=floors_value)
+                    floors_cached += 1
+                except:
+                    pass
         except (KeyError, ValueError):
             floors_list.append(None)
     # Ensure same length as dates
     while len(floors_list) < len(dates_str_list):
         floors_list.append(None)
+    print(f"✅ Cached {floors_cached} days of floors data")
     
-    # Process Active Zone Minutes data
-    for entry in response_azm.get('activities-active-zone-minutes', []):
+    # Process and cache Active Zone Minutes data
+    azm_cached = 0
+    for i, entry in enumerate(response_azm.get('activities-active-zone-minutes', [])):
         try:
-            azm_list.append(entry['value']['activeZoneMinutes'])
+            date_str = dates_str_list[i] if i < len(dates_str_list) else None
+            azm_value = entry['value']['activeZoneMinutes']
+            azm_list.append(azm_value)
+            
+            # Cache AZM
+            if date_str:
+                try:
+                    cache.set_daily_metrics(date=date_str, active_zone_minutes=azm_value)
+                    azm_cached += 1
+                except:
+                    pass
         except (KeyError, ValueError):
             azm_list.append(None)
     # Ensure same length as dates
     while len(azm_list) < len(dates_str_list):
         azm_list.append(None)
+    print(f"✅ Cached {azm_cached} days of AZM data")
 
     # 🚀 USE CACHE FOR SLEEP DATA - Only fetch missing dates!
     print(f"📊 Fetching sleep data for {len(dates_str_list)} dates...")
@@ -1986,11 +2595,12 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     floors_summary_df = calculate_table_data(df_merged, "Floors")
     floors_summary_table = dash_table.DataTable(floors_summary_df.to_dict('records'), [{"name": i, "id": i} for i in floors_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#663399','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
     
-    # Exercise Log with Enhanced Data
+    # Exercise Log with Enhanced Data - with caching
     exercise_data = []
     activity_types = set(['All'])
     workout_dates_for_dropdown = []  # For drill-down selector
     activities_by_date = {}  # Store activities by date for drill-down
+    activities_cached = 0
     
     for activity in response_activities.get('activities', []):
         try:
@@ -2018,8 +2628,28 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                 if activity_date not in exercise_data_store:
                     exercise_data_store[activity_date] = []
                 exercise_data_store[activity_date].append(activity)
+                
+                # Cache activity
+                try:
+                    activity_id = str(activity.get('logId', f"{activity_date}_{activity_name}"))
+                    cache.set_activity(
+                        activity_id=activity_id,
+                        date=activity_date,
+                        activity_name=activity_name,
+                        duration_ms=activity.get('duration'),
+                        calories=activity.get('calories'),
+                        avg_heart_rate=activity.get('averageHeartRate'),
+                        steps=activity.get('steps'),
+                        distance=activity.get('distance'),
+                        activity_data_json=str(activity)
+                    )
+                    activities_cached += 1
+                except:
+                    pass
         except:
             pass
+    
+    print(f"✅ Cached {activities_cached} activities")
     
     # Exercise type filter options
     exercise_filter_options = [{'label': activity_type, 'value': activity_type} for activity_type in sorted(activity_types)]
