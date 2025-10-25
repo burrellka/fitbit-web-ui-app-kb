@@ -1006,21 +1006,6 @@ app.layout = html.Div(children=[
         ),
         html.Div(id='spo2_table', style={'max-width': '1200px', 'margin': 'auto', 'font-weight': 'bold'}, children=[]),
         html.Div(style={"height": '40px'}),
-        html.H4("Sleep 💤", style={'font-weight': 'bold'}),
-        html.H6("Fitbit estimates sleep stages (awake, REM, light sleep and deep sleep) and sleep duration based on a person's movement and heart-rate patterns. The National Sleep Foundation recommends 7-9 hours of sleep per night for adults"),
-        dcc.Checklist(options=[{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled':True}], value=['Color Code Sleep Stages'], style={'max-width': '1330px', 'margin': 'auto'}, inline=True, id="sleep-stage-checkbox", className="hidden-print"),
-        dcc.Graph(
-            id='graph_sleep',
-            figure=px.bar(),
-            config= {'displaylogo': False}
-        ),
-        dcc.Graph(
-            id='graph_sleep_regularity',
-            figure=px.bar(),
-            config= {'displaylogo': False}
-        ),
-        html.Div(id='sleep_table', style={'max-width': '1200px', 'margin': 'auto', 'font-weight': 'bold'}, children=[]),
-        html.Div(style={"height": '40px'}),
         html.H4("Heart Rate Variability (HRV) 💗", style={'font-weight': 'bold'}),
         html.H6("Heart Rate Variability measures the variation in time between heartbeats. Higher HRV generally indicates better cardiovascular fitness and stress resilience. HRV is measured in milliseconds (ms) and varies by age, fitness level, and individual factors."),
         dcc.Graph(
@@ -1115,6 +1100,22 @@ app.layout = html.Div(children=[
         html.Div(id='workout-detail-display', style={'margin': '20px 0'}, children=[]),
         html.Div(style={"height": '40px'}),
         
+        html.H4("Sleep 💤", style={'font-weight': 'bold'}),
+        html.H6("Fitbit estimates sleep stages (awake, REM, light sleep and deep sleep) and sleep duration based on a person's movement and heart-rate patterns. The National Sleep Foundation recommends 7-9 hours of sleep per night for adults"),
+        dcc.Checklist(options=[{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled':True}], value=['Color Code Sleep Stages'], style={'max-width': '1330px', 'margin': 'auto'}, inline=True, id="sleep-stage-checkbox", className="hidden-print"),
+        dcc.Graph(
+            id='graph_sleep',
+            figure=px.bar(),
+            config= {'displaylogo': False}
+        ),
+        dcc.Graph(
+            id='graph_sleep_regularity',
+            figure=px.bar(),
+            config= {'displaylogo': False}
+        ),
+        html.Div(id='sleep_table', style={'max-width': '1200px', 'margin': 'auto', 'font-weight': 'bold'}, children=[]),
+        html.Div(style={"height": '40px'}),
+        
         html.H4("Sleep Quality Analysis 😴", style={'font-weight': 'bold'}),
         html.H6("Comprehensive sleep metrics including sleep score, stage distribution, and consistency patterns."),
         html.Div(style={'display': 'flex', 'flex-wrap': 'wrap', 'gap': '20px', 'justify-content': 'center'}, children=[
@@ -1141,7 +1142,14 @@ app.layout = html.Div(children=[
         
         html.H4("Exercise ↔ Sleep Correlations 🔗", style={'font-weight': 'bold'}),
         html.H6("Discover how your workouts impact your sleep quality and next-day recovery."),
-        dcc.Graph(id='graph_exercise_sleep_correlation', figure=px.scatter(), config={'displaylogo': False}),
+        html.Div(style={'display': 'flex', 'flex-wrap': 'wrap', 'gap': '20px', 'justify-content': 'center'}, children=[
+            html.Div(style={'flex': '1', 'min-width': '500px'}, children=[
+                dcc.Graph(id='graph_exercise_sleep_correlation', figure=px.scatter(), config={'displaylogo': False}),
+            ]),
+            html.Div(style={'flex': '1', 'min-width': '500px'}, children=[
+                dcc.Graph(id='graph_azm_sleep_correlation', figure=px.scatter(), config={'displaylogo': False}),
+            ]),
+        ]),
         html.Div(id='correlation_insights', style={'max-width': '1200px', 'margin': 'auto', 'padding': '20px', 'background-color': '#f8f9fa', 'border-radius': '10px'}, children=[]),
         html.Div(style={"height": '40px'}),
         
@@ -2008,7 +2016,7 @@ def disable_button_and_calculate(n_clicks, oauth_token, refresh_token, token_exp
     return False, True, True
 
 # Fetch data and update graphs on click of submit
-@app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_sleep', 'figure'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise-type-filter', 'options'), Output('exercise_log_table', 'children'), Output('workout-date-selector', 'options'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('sleep-date-selector', 'options'), Output('graph_exercise_sleep_correlation', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
+@app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_sleep', 'figure'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise-type-filter', 'options'), Output('exercise_log_table', 'children'), Output('workout-date-selector', 'options'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('sleep-date-selector', 'options'), Output('graph_exercise_sleep_correlation', 'figure'), Output('graph_azm_sleep_correlation', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
 Input('submit-button', 'disabled'),
 State('my-date-picker-range', 'start_date'), State('my-date-picker-range', 'end_date'), State('oauth-token', 'data'),
 prevent_initial_call=True)
@@ -2077,7 +2085,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                     # Return with error message (44 outputs total)
                     empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
                     empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
-                    return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), html.P("Rate limit exceeded"), ""
+                    return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), px.scatter(), html.P("Rate limit exceeded"), ""
                 else:
                     print(f"API Error: {user_profile['error']}")
                     
@@ -2091,7 +2099,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                     print("Please wait at least 1 hour before generating another report.")
                     empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
                     empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
-                    return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), html.P("Rate limit exceeded"), ""
+                    return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), px.scatter(), html.P("Rate limit exceeded"), ""
                     
             response_steps = requests.get("https://api.fitbit.com/1/user/-/activities/steps/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
             response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
@@ -2101,7 +2109,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             # Return empty results if API calls fail with valid empty plots
             empty_fig = px.line(title="Error Fetching Data")
             empty_heatmap = px.imshow([[0]], title="No Data Available")
-            return dash.no_update, dash.no_update, dash.no_update, empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Error fetching data"), [], px.line(), px.pie(), [], px.scatter(), html.P("Error fetching data"), ""
+            return dash.no_update, dash.no_update, dash.no_update, empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Error fetching data"), [], px.line(), px.pie(), [], px.scatter(), px.scatter(), html.P("Error fetching data"), ""
     
     # Build dates list for processing (use our pre-generated list if all_cached)
     if all_cached:
@@ -2114,7 +2122,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         else:
             print(f"ERROR: No heart rate data in response: {response_heartrate}")
             empty_heatmap = px.imshow([[0]], title="No Data Available")
-            return dash.no_update, dash.no_update, dash.no_update, px.line(), [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("No heart rate data"), [], px.line(), px.pie(), [], px.scatter(), html.P("No heart rate data"), ""
+            return dash.no_update, dash.no_update, dash.no_update, px.line(), [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("No heart rate data"), [], px.line(), px.pie(), [], px.scatter(), px.scatter(), html.P("No heart rate data"), ""
     
     # 🚀 CACHE-FIRST: Check cache for advanced metrics before fetching from API
     response_hrv = {"hrv": []}
@@ -3147,7 +3155,54 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         fig_correlation = px.scatter(title='Exercise-Sleep Correlation (Insufficient Data)')
         correlation_insights = html.P("Need more data points for correlation analysis. Try a longer date range or log more workouts!")
     
-    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_spo2, spo2_summary_table, fig_sleep_minutes, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_filter_options, exercise_log_table, workout_dates_for_dropdown, fig_sleep_score, fig_sleep_stages_pie, sleep_dates_for_dropdown, fig_correlation, correlation_insights, ""
+    # Phase 5: AZM vs Sleep Score Correlation (same day)
+    azm_sleep_data = []
+    for date_str in dates_str_list:
+        # Get AZM for this date from df_merged
+        azm_value = df_merged[df_merged['Date'] == date_str]['Active Zone Minutes'].values
+        azm = azm_value[0] if len(azm_value) > 0 and not pd.isna(azm_value[0]) else 0
+        
+        # Get Sleep Score for this date
+        cached_sleep = cache.get_sleep_data(date_str)
+        if cached_sleep and cached_sleep['sleep_score'] is not None:
+            sleep_score = cached_sleep['sleep_score']
+            azm_sleep_data.append({
+                'Date': date_str,
+                'Active Zone Minutes': azm,
+                'Sleep Score': sleep_score
+            })
+        elif date_str in sleep_record_dict and sleep_record_dict[date_str].get('sleep_score'):
+            sleep_score = sleep_record_dict[date_str]['sleep_score']
+            azm_sleep_data.append({
+                'Date': date_str,
+                'Active Zone Minutes': azm,
+                'Sleep Score': sleep_score
+            })
+    
+    if azm_sleep_data and len(azm_sleep_data) >= 3:
+        azm_sleep_df = pd.DataFrame(azm_sleep_data)
+        azm_sleep_df = azm_sleep_df[azm_sleep_df['Sleep Score'] > 0]  # Filter valid scores
+        
+        if len(azm_sleep_df) >= 3:
+            fig_azm_sleep_correlation = px.scatter(azm_sleep_df, x='Active Zone Minutes', y='Sleep Score',
+                                                   hover_data=['Date'],
+                                                   title='Active Zone Minutes vs Sleep Quality',
+                                                   trendline="ols")
+            fig_azm_sleep_correlation.update_layout(xaxis_title="Active Zone Minutes (Daily)",
+                                                   yaxis_title="Sleep Score (0-100)",
+                                                   yaxis_range=[0, 100])
+            fig_azm_sleep_correlation.add_hline(y=75, line_dash="dot", line_color="green",
+                                                annotation_text="Good Sleep", annotation_position="right")
+            
+            # Calculate correlation coefficient
+            azm_corr_coef = azm_sleep_df['Active Zone Minutes'].corr(azm_sleep_df['Sleep Score'])
+            print(f"📊 AZM vs Sleep Score Correlation: {azm_corr_coef:.3f}")
+        else:
+            fig_azm_sleep_correlation = px.scatter(title='AZM-Sleep Correlation (Insufficient Data)')
+    else:
+        fig_azm_sleep_correlation = px.scatter(title='AZM-Sleep Correlation (Insufficient Data)')
+    
+    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_spo2, spo2_summary_table, fig_sleep_minutes, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_filter_options, exercise_log_table, workout_dates_for_dropdown, fig_sleep_score, fig_sleep_stages_pie, sleep_dates_for_dropdown, fig_correlation, fig_azm_sleep_correlation, correlation_insights, ""
 
 # ========================================
 # REST API Endpoints for MCP Server Integration
