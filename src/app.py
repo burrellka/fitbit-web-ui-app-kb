@@ -237,7 +237,7 @@ def background_cache_builder(access_token: str):
                 ("Distance", f"https://api.fitbit.com/1/user/-/activities/distance/date/{start_date_str}/{end_date_str}.json"),
                 ("Floors", f"https://api.fitbit.com/1/user/-/activities/floors/date/{start_date_str}/{end_date_str}.json"),
                 ("Active Zone Minutes", f"https://api.fitbit.com/1/user/-/activities/active-zone-minutes/date/{start_date_str}/{end_date_str}.json"),
-                ("Activities", f"https://api.fitbit.com/1/user/-/activities/list.json?afterDate={start_date_str}&sort=asc&offset=0&limit=100"),
+                ("Activities", f"https://api.fitbit.com/1/user/-/activities/list.json?beforeDate={end_date_str}&afterDate={start_date_str}&sort=asc&offset=0&limit=100"),
             ]
             
             for metric_name, endpoint in range_endpoints:
@@ -1992,10 +1992,13 @@ def display_sleep_details(selected_date, oauth_token):
                 }
                 
                 # Create TRUE Gantt-style timeline with REAL TIMES on X-axis
+                # 🐞 FIX: Group all segments of same stage into ONE trace per stage (eliminates fragmentation)
                 fig_timeline = go.Figure()
                 
-                # Build timeline segments with actual start/end times
-                for idx, entry in enumerate(stages_data):
+                # Group segments by stage type
+                stage_segments = {'deep': [], 'light': [], 'rem': [], 'wake': [], 'awake': []}
+                
+                for entry in stages_data:
                     stage = entry.get('level', '').lower()
                     start_time = datetime.fromisoformat(entry['dateTime'].replace('Z', '+00:00'))
                     duration_seconds = entry.get('seconds', 0)
@@ -2006,24 +2009,47 @@ def display_sleep_details(selected_date, oauth_token):
                     start_ms = int(start_time.timestamp() * 1000)
                     duration_ms = duration_seconds * 1000
                     
-                    # Create a horizontal bar segment for this stage with REAL times
-                    fig_timeline.add_trace(go.Bar(
-                        base=[start_ms],  # Start time in milliseconds
-                        x=[duration_ms],  # Duration in milliseconds
-                        y=["Sleep"],
-                        orientation='h',
-                        marker=dict(
-                            color=stage_colors.get(stage, '#ccc'),
-                            line=dict(width=0)
-                        ),
-                        name=stage_names.get(stage, stage),
-                        hovertemplate=f"<b>{stage_names.get(stage, stage)}</b><br>" +
-                                      f"{start_time.strftime('%I:%M %p')} - {end_time.strftime('%I:%M %p')}<br>" +
-                                      f"Duration: {int(duration_minutes)} min<br>" +
-                                      "<extra></extra>",
-                        showlegend=(idx == 0 or stage != stages_data[idx-1].get('level', '').lower()),
-                        legendgroup=stage
-                    ))
+                    if stage in stage_segments:
+                        stage_segments[stage].append({
+                            'start_ms': start_ms,
+                            'duration_ms': duration_ms,
+                            'start_time': start_time,
+                            'end_time': end_time,
+                            'duration_minutes': duration_minutes
+                        })
+                
+                # Create ONE trace per stage type (with all segments of that stage)
+                stage_order = ['deep', 'light', 'rem', 'wake', 'awake']
+                for stage in stage_order:
+                    if stage_segments[stage]:
+                        # Collect all bases and durations for this stage
+                        bases = [seg['start_ms'] for seg in stage_segments[stage]]
+                        durations = [seg['duration_ms'] for seg in stage_segments[stage]]
+                        
+                        # Build custom hover text for each segment
+                        hover_texts = []
+                        for seg in stage_segments[stage]:
+                            hover_texts.append(
+                                f"<b>{stage_names.get(stage, stage)}</b><br>" +
+                                f"{seg['start_time'].strftime('%I:%M %p')} - {seg['end_time'].strftime('%I:%M %p')}<br>" +
+                                f"Duration: {int(seg['duration_minutes'])} min<br>"
+                            )
+                        
+                        fig_timeline.add_trace(go.Bar(
+                            base=bases,
+                            x=durations,
+                            y=["Sleep"] * len(bases),
+                            orientation='h',
+                            marker=dict(
+                                color=stage_colors.get(stage, '#ccc'),
+                                line=dict(width=0)
+                            ),
+                            name=stage_names.get(stage, stage),
+                            hovertemplate='%{hovertext}<extra></extra>',
+                            hovertext=hover_texts,
+                            showlegend=True,
+                            legendgroup=stage
+                        ))
                 
                 fig_timeline.update_layout(
                     title=dict(text="<b>Sleep Timeline</b><br><sup>Showing when each sleep stage occurred throughout the night</sup>", 
@@ -2780,7 +2806,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     except:
         response_azm = {}
     try:
-        response_activities = requests.get("https://api.fitbit.com/1/user/-/activities/list.json?afterDate="+ start_date +"&sort=asc&offset=0&limit=100", headers=headers).json()
+        response_activities = requests.get("https://api.fitbit.com/1/user/-/activities/list.json?beforeDate="+ end_date +"&afterDate="+ start_date +"&sort=asc&offset=0&limit=100", headers=headers).json()
     except:
         response_activities = {}
 
@@ -4003,9 +4029,11 @@ def api_get_exercise(date):
         access_token = token_response.json().get('access_token')
         headers = {"Authorization": f"Bearer {access_token}"}
         
-        # Fetch activities for the date
+        # Fetch activities for the date (🐞 FIX: Add beforeDate to ensure correct range)
+        from datetime import datetime, timedelta
+        next_day = (datetime.strptime(date, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
         activities_response = requests.get(
-            f"https://api.fitbit.com/1/user/-/activities/list.json?afterDate={date}&sort=asc&offset=0&limit=100",
+            f"https://api.fitbit.com/1/user/-/activities/list.json?beforeDate={next_day}&afterDate={date}&sort=asc&offset=0&limit=100",
             headers=headers,
             timeout=10
         ).json()
