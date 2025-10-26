@@ -2594,6 +2594,28 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         "Accept": "application/json"
     }
 
+    # === 🚨 FIX: INITIALIZE ALL DATA LISTS FOR FUNCTION-WIDE SCOPE ===
+    # These lists must be initialized at the function level to be accessible
+    # in ALL code paths (cached, API-fetching, etc.) - prevents UnboundLocalError
+    dates_list = []
+    rhr_list = []
+    fat_burn_minutes_list = []
+    cardio_minutes_list = []
+    peak_minutes_list = []
+    steps_list = []
+    weight_list = []
+    spo2_list = []
+    eov_list = []
+    calories_list = []
+    distance_list = []
+    floors_list = []
+    azm_list = []
+    hrv_list = []
+    breathing_list = []
+    temperature_list = []
+    cardio_fitness_list = []
+    # =================================================================
+
     # 🚀 CACHE-FIRST CHECK: Verify if ALL data is cached before making ANY API calls
     print(f"📊 Generating report for {start_date} to {end_date}")
     
@@ -2630,26 +2652,8 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         # Populate ALL data from cache
         user_profile = {"user": {"displayName": "Cached User", "firstName": "Cached", "lastName": "User"}}
         
-        # 🚨 FIX: INITIALIZE ALL DATA LISTS (prevents UnboundLocalError)
-        dates_list = []
-        rhr_list = []
-        fat_burn_minutes_list = []
-        cardio_minutes_list = []
-        peak_minutes_list = []
-        steps_list = []
-        weight_list = []
-        spo2_list = []
-        eov_list = []
-        calories_list = []
-        distance_list = []
-        floors_list = []
-        azm_list = []
-        hrv_list = []
-        breathing_list = []
-        temperature_list = []
-        cardio_fitness_list = []
-        
         # Read all daily metrics from cache
+        # (Lists already initialized at function level)
         for date_str in dates_str_list:
             daily_metrics = cache.get_daily_metrics(date_str)
             
