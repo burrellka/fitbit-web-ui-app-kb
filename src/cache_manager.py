@@ -144,19 +144,37 @@ class FitbitCache:
                        rem: int = None, wake: int = None, start_time: str = None,
                        sleep_data_json: str = None):
         """Cache sleep score and related data for a specific date"""
-        with self.lock:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT OR REPLACE INTO sleep_cache 
-                (date, sleep_score, efficiency, proxy_score, reality_score, total_sleep, deep_minutes, light_minutes, 
-                 rem_minutes, wake_minutes, start_time, sleep_data_json, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ''', (date, sleep_score, efficiency, proxy_score, reality_score, total_sleep, deep, light, rem, wake, 
-                  start_time, sleep_data_json))
-            conn.commit()
-            conn.close()
-            print(f"💾 Cached sleep scores for {date}: Reality={reality_score}, Proxy={proxy_score}, Efficiency={efficiency}")
+        try:
+            with self.lock:
+                print(f"🔍 [CACHE DEBUG] Attempting to cache {date} - Reality={reality_score}, Proxy={proxy_score}")
+                conn = sqlite3.connect(self.db_path)
+                print(f"🔍 [CACHE DEBUG] Connected to {self.db_path}")
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT OR REPLACE INTO sleep_cache 
+                    (date, sleep_score, efficiency, proxy_score, reality_score, total_sleep, deep_minutes, light_minutes, 
+                     rem_minutes, wake_minutes, start_time, sleep_data_json, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ''', (date, sleep_score, efficiency, proxy_score, reality_score, total_sleep, deep, light, rem, wake, 
+                      start_time, sleep_data_json))
+                print(f"🔍 [CACHE DEBUG] Execute completed, committing...")
+                conn.commit()
+                print(f"🔍 [CACHE DEBUG] Commit completed")
+                
+                # VERIFY the write
+                cursor.execute("SELECT reality_score FROM sleep_cache WHERE date = ?", (date,))
+                verify = cursor.fetchone()
+                if verify:
+                    print(f"✅ [CACHE DEBUG] VERIFIED: {date} exists with reality_score={verify[0]}")
+                else:
+                    print(f"❌ [CACHE DEBUG] VERIFICATION FAILED: {date} NOT FOUND after commit!")
+                
+                conn.close()
+                print(f"💾 Cached sleep scores for {date}: Reality={reality_score}, Proxy={proxy_score}, Efficiency={efficiency}")
+        except Exception as e:
+            print(f"❌ [CACHE ERROR] Failed to cache {date}: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
     
     def get_sleep_data(self, date: str) -> Optional[Dict]:
         """Get all cached sleep data for a specific date"""
