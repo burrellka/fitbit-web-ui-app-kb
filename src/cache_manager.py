@@ -60,6 +60,12 @@ class FitbitCache:
             except sqlite3.OperationalError:
                 pass  # Column already exists
             
+            # Add EOV column to daily_metrics_cache (migration for existing databases)
+            try:
+                cursor.execute('ALTER TABLE daily_metrics_cache ADD COLUMN eov REAL')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
             # Advanced metrics table
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS advanced_metrics_cache (
@@ -79,6 +85,7 @@ class FitbitCache:
                     steps INTEGER,
                     weight REAL,
                     spo2 REAL,
+                    eov REAL,
                     calories INTEGER,
                     distance REAL,
                     floors INTEGER,
@@ -393,12 +400,12 @@ class FitbitCache:
         print(f"📅 Last sync date updated: {date_str}")
     
     def get_daily_metrics(self, date: str) -> Optional[Dict]:
-        """Get cached daily metrics for a specific date"""
+        """Get cached daily metrics for a specific date (🐞 FIX: Added EOV support)"""
         with self.lock:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT resting_heart_rate, steps, weight, spo2, calories, distance, 
+                SELECT resting_heart_rate, steps, weight, spo2, eov, calories, distance, 
                        floors, active_zone_minutes, fat_burn_minutes, cardio_minutes, peak_minutes
                 FROM daily_metrics_cache WHERE date = ?
             ''', (date,))
@@ -411,30 +418,31 @@ class FitbitCache:
                     'steps': result[1],
                     'weight': result[2],
                     'spo2': result[3],
-                    'calories': result[4],
-                    'distance': result[5],
-                    'floors': result[6],
-                    'active_zone_minutes': result[7],
-                    'fat_burn_minutes': result[8],
-                    'cardio_minutes': result[9],
-                    'peak_minutes': result[10]
+                    'eov': result[4],
+                    'calories': result[5],
+                    'distance': result[6],
+                    'floors': result[7],
+                    'active_zone_minutes': result[8],
+                    'fat_burn_minutes': result[9],
+                    'cardio_minutes': result[10],
+                    'peak_minutes': result[11]
                 }
             return None
     
     def set_daily_metrics(self, date: str, resting_heart_rate: int = None, steps: int = None,
-                         weight: float = None, spo2: float = None, calories: int = None,
+                         weight: float = None, spo2: float = None, eov: float = None, calories: int = None,
                          distance: float = None, floors: int = None, active_zone_minutes: int = None,
                          fat_burn_minutes: int = None, cardio_minutes: int = None, peak_minutes: int = None):
-        """Cache daily metrics for a specific date"""
+        """Cache daily metrics for a specific date (🐞 FIX: Added EOV support)"""
         with self.lock:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT OR REPLACE INTO daily_metrics_cache 
-                (date, resting_heart_rate, steps, weight, spo2, calories, distance, floors,
-                 active_zone_minutes, fat_burn_minutes, cardio_minutes, peak_minutes, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ''', (date, resting_heart_rate, steps, weight, spo2, calories, distance, floors,
+                (date, resting_heart_rate, steps, weight, spo2, eov, calories, distance, floors,
+                 active_zone_minutes, fat_burn_minutes, cardio_minutes, peak_minutes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (date, resting_heart_rate, steps, weight, spo2, eov, calories, distance, floors,
                   active_zone_minutes, fat_burn_minutes, cardio_minutes, peak_minutes))
             conn.commit()
             conn.close()

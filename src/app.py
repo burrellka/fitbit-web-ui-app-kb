@@ -2913,16 +2913,16 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             spo2_value = entry["value"]["avg"]
             spo2_list.append(spo2_value)
             
-            # Extract EOV (Estimated Oxygen Variation) if available
+            # Extract EOV (Estimated Oxygen Variation) if available (🐞 FIX: EOV Data Flow)
             eov_value = None
             if "value" in entry and isinstance(entry["value"], dict):
                 # EOV can be in different keys depending on API version
                 eov_value = entry["value"].get("eov") or entry["value"].get("variationScore")
             eov_list.append(eov_value)
             
-            # Cache SpO2
+            # Cache SpO2 AND EOV (🐞 FIX: Save EOV to cache)
             try:
-                cache.set_daily_metrics(date=date_str, spo2=spo2_value)
+                cache.set_daily_metrics(date=date_str, spo2=spo2_value, eov=eov_value)
                 spo2_cached += 1
             except:
                 pass
