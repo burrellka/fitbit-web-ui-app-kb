@@ -2630,6 +2630,25 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         # Populate ALL data from cache
         user_profile = {"user": {"displayName": "Cached User", "firstName": "Cached", "lastName": "User"}}
         
+        # 🚨 FIX: INITIALIZE ALL DATA LISTS (prevents UnboundLocalError)
+        dates_list = []
+        rhr_list = []
+        fat_burn_minutes_list = []
+        cardio_minutes_list = []
+        peak_minutes_list = []
+        steps_list = []
+        weight_list = []
+        spo2_list = []
+        eov_list = []
+        calories_list = []
+        distance_list = []
+        floors_list = []
+        azm_list = []
+        hrv_list = []
+        breathing_list = []
+        temperature_list = []
+        cardio_fitness_list = []
+        
         # Read all daily metrics from cache
         for date_str in dates_str_list:
             daily_metrics = cache.get_daily_metrics(date_str)
