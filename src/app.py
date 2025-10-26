@@ -261,6 +261,62 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
                 except:
                     pass
     
+    elif metric_type == 'heartrate':
+        hr_lookup = {}
+        for entry in response_data.get('activities-heart', []):
+            try:
+                if 'value' in entry and 'restingHeartRate' in entry['value']:
+                    hr_lookup[entry['dateTime']] = entry['value']['restingHeartRate']
+            except (KeyError, ValueError):
+                pass
+        
+        for date_str in dates_str_list:
+            hr_value = hr_lookup.get(date_str)
+            if hr_value is not None:
+                try:
+                    cache_manager.set_daily_metrics(date=date_str, resting_heart_rate=hr_value)
+                    cached_count += 1
+                except:
+                    pass
+    
+    elif metric_type == 'weight':
+        weight_lookup = {}
+        for entry in response_data.get('weight', []):
+            try:
+                weight_kg = float(entry['weight'])
+                weight_lbs = round(weight_kg * 2.20462, 1)
+                weight_lookup[entry['date']] = weight_lbs
+            except (KeyError, ValueError):
+                pass
+        
+        for date_str in dates_str_list:
+            weight_value = weight_lookup.get(date_str)
+            if weight_value is not None:
+                try:
+                    cache_manager.set_daily_metrics(date=date_str, weight=weight_value)
+                    cached_count += 1
+                except:
+                    pass
+    
+    elif metric_type == 'spo2':
+        spo2_lookup = {}
+        for entry in response_data:
+            try:
+                if isinstance(entry, dict) and 'dateTime' in entry and 'value' in entry:
+                    if 'avg' in entry['value']:
+                        spo2_lookup[entry['dateTime']] = float(entry['value']['avg'])
+            except (KeyError, ValueError, TypeError):
+                pass
+        
+        for date_str in dates_str_list:
+            spo2_value = spo2_lookup.get(date_str)
+            if spo2_value is not None:
+                try:
+                    cache_manager.set_daily_metrics(date=date_str, spo2=spo2_value)
+                    cached_count += 1
+                except:
+                    pass
+    
     return cached_count
 
 
@@ -380,8 +436,14 @@ def background_cache_builder(access_token: str):
                         response_data = response.json()
                         cached = 0
                         
-                        if metric_name == "Steps":
+                        if metric_name == "Heart Rate":
+                            cached = process_and_cache_daily_metrics(dates_str_list, 'heartrate', response_data, cache)
+                        elif metric_name == "Steps":
                             cached = process_and_cache_daily_metrics(dates_str_list, 'steps', response_data, cache)
+                        elif metric_name == "Weight":
+                            cached = process_and_cache_daily_metrics(dates_str_list, 'weight', response_data, cache)
+                        elif metric_name == "SpO2":
+                            cached = process_and_cache_daily_metrics(dates_str_list, 'spo2', response_data, cache)
                         elif metric_name == "Calories":
                             cached = process_and_cache_daily_metrics(dates_str_list, 'calories', response_data, cache)
                         elif metric_name == "Distance":
@@ -390,6 +452,27 @@ def background_cache_builder(access_token: str):
                             cached = process_and_cache_daily_metrics(dates_str_list, 'floors', response_data, cache)
                         elif metric_name == "Active Zone Minutes":
                             cached = process_and_cache_daily_metrics(dates_str_list, 'azm', response_data, cache)
+                        elif metric_name == "Activities":
+                            # Activities need special handling
+                            activities_list = response_data.get('activities', [])
+                            for activity in activities_list:
+                                try:
+                                    activity_date = datetime.strptime(activity['startTime'][:10], '%Y-%m-%d').strftime("%Y-%m-%d")
+                                    activity_id = str(activity.get('logId', f"{activity_date}_{activity.get('activityName', 'activity')}"))
+                                    cache.set_activity(
+                                        activity_id=activity_id,
+                                        date=activity_date,
+                                        activity_name=activity.get('activityName', 'N/A'),
+                                        duration_ms=activity.get('duration'),
+                                        calories=activity.get('calories'),
+                                        avg_heart_rate=activity.get('averageHeartRate'),
+                                        steps=activity.get('steps'),
+                                        distance=activity.get('distance'),
+                                        activity_data_json=str(activity)
+                                    )
+                                    cached += 1
+                                except Exception as e:
+                                    pass
                         
                         if cached > 0:
                             print(f" → 💾 Cached {cached} days")
@@ -2530,6 +2613,43 @@ def set_max_date_allowed(start_date):
     current_date = datetime.today().date()  # Allow today's date
     max_end_date = min((start + timedelta(days=365)).date(), current_date)
     return max_end_date, max_end_date
+
+# 🐞 NEW: Control button states based on login status
+@app.callback(
+    Output('submit-button', 'disabled', allow_duplicate=True),
+    Output('flush-cache-button-header', 'disabled', allow_duplicate=True),
+    Output('start-cache-button', 'disabled', allow_duplicate=True),
+    Output('login-button', 'disabled', allow_duplicate=True),
+    Output('logout-button', 'disabled', allow_duplicate=True),
+    Input('oauth-token', 'data'),
+    prevent_initial_call='initial_duplicate'
+)
+def control_buttons_on_login(oauth_token):
+    """
+    Disable all buttons except Login/Logout based on authentication status.
+    
+    When NOT logged in:
+    - Submit: DISABLED
+    - Flush Cache: DISABLED
+    - Start Cache: DISABLED
+    - Login: ENABLED
+    - Logout: DISABLED
+    
+    When logged in:
+    - Submit: ENABLED
+    - Flush Cache: ENABLED
+    - Start Cache: ENABLED
+    - Login: DISABLED
+    - Logout: ENABLED
+    """
+    logged_in = oauth_token is not None
+    
+    if logged_in:
+        # User is logged in - enable all functional buttons
+        return False, False, False, True, False
+    else:
+        # User is NOT logged in - only Login button enabled
+        return True, True, True, False, True
 
 # Disables the button after click and starts calculations
 @app.callback(Output('errordialog', 'displayed'), Output('submit-button', 'disabled'), Output('my-date-picker-range', 'disabled'), Input('submit-button', 'n_clicks'),State('oauth-token', 'data'),State('refresh-token', 'data'),State('token-expiry', 'data'),prevent_initial_call=True)
