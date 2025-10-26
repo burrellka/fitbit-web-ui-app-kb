@@ -2890,23 +2890,28 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         
         print(f"✅ Cached {cached_daily_count} days of heart rate data")
         
-        # Process and cache steps
+        # Process and cache steps (🐞 FIX: Use date-string lookup for alignment)
         steps_cached = 0
-        for i, entry in enumerate(response_steps['activities-steps']):
-            date_str = dates_str_list[i]
-            if int(entry['value']) == 0:
-                steps = None
-                steps_list.append(None)
-            else:
-                steps = int(entry['value'])
-                steps_list.append(steps)
+        # 1. Create lookup dictionary from API response
+        steps_lookup = {entry['dateTime']: int(entry['value']) for entry in response_steps.get('activities-steps', [])}
+        
+        # 2. Iterate over master date list for perfect alignment
+        for date_str in dates_str_list:
+            steps_value = steps_lookup.get(date_str)
             
-            # Update cache with steps
-            try:
-                cache.set_daily_metrics(date=date_str, steps=steps)
-                steps_cached += 1
-            except:
-                pass
+            # Handle zero steps as None
+            if steps_value == 0:
+                steps_value = None
+            
+            steps_list.append(steps_value)
+            
+            # Cache steps
+            if steps_value is not None:
+                try:
+                    cache.set_daily_metrics(date=date_str, steps=steps_value)
+                    steps_cached += 1
+                except:
+                    pass
         
         print(f"✅ Cached {steps_cached} days of steps data")
 
@@ -3023,94 +3028,107 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                 pass
         temperature_list += [None]*(len(dates_str_list)-len(temperature_list))
         
-        # Process and cache Calories data
+        # Process and cache Calories data (🐞 FIX: Use date-string lookup for alignment)
         calories_cached = 0
-        for i, entry in enumerate(response_calories.get('activities-calories', [])):
+        # 1. Create lookup dictionary from API response
+        calories_lookup = {}
+        for entry in response_calories.get('activities-calories', []):
             try:
-                date_str = dates_str_list[i] if i < len(dates_str_list) else None
-                calories_value = int(entry['value'])
-                calories_list.append(calories_value)
-                
-                # Cache calories
-                if date_str:
-                    try:
-                        cache.set_daily_metrics(date=date_str, calories=calories_value)
-                        calories_cached += 1
-                    except:
-                        pass
+                calories_lookup[entry['dateTime']] = int(entry['value'])
             except (KeyError, ValueError):
-                calories_list.append(None)
-        # Ensure same length as dates
-        while len(calories_list) < len(dates_str_list):
-            calories_list.append(None)
+                pass
+        
+        # 2. Iterate over master date list for perfect alignment
+        for date_str in dates_str_list:
+            calories_value = calories_lookup.get(date_str)
+            calories_list.append(calories_value)
+            
+            # Cache calories
+            if calories_value is not None:
+                try:
+                    cache.set_daily_metrics(date=date_str, calories=calories_value)
+                    calories_cached += 1
+                except:
+                    pass
+        
         print(f"✅ Cached {calories_cached} days of calories data")
         
-        # Process and cache Distance data
+        # Process and cache Distance data (🐞 FIX: Use date-string lookup for alignment)
         distance_cached = 0
-        for i, entry in enumerate(response_distance.get('activities-distance', [])):
+        # 1. Create lookup dictionary from API response
+        distance_lookup = {}
+        for entry in response_distance.get('activities-distance', []):
             try:
-                date_str = dates_str_list[i] if i < len(dates_str_list) else None
                 # Convert km to miles (1 km = 0.621371 miles)
                 distance_km = float(entry['value'])
                 distance_miles = round(distance_km * 0.621371, 2)
-                distance_list.append(distance_miles)
-                
-                # Cache distance
-                if date_str:
-                    try:
-                        cache.set_daily_metrics(date=date_str, distance=distance_miles)
-                        distance_cached += 1
-                    except:
-                        pass
+                distance_lookup[entry['dateTime']] = distance_miles
             except (KeyError, ValueError):
-                distance_list.append(None)
-        # Ensure same length as dates
-        while len(distance_list) < len(dates_str_list):
-            distance_list.append(None)
+                pass
+        
+        # 2. Iterate over master date list for perfect alignment
+        for date_str in dates_str_list:
+            distance_value = distance_lookup.get(date_str)
+            distance_list.append(distance_value)
+            
+            # Cache distance
+            if distance_value is not None:
+                try:
+                    cache.set_daily_metrics(date=date_str, distance=distance_value)
+                    distance_cached += 1
+                except:
+                    pass
+        
         print(f"✅ Cached {distance_cached} days of distance data")
         
-        # Process and cache Floors data
+        # Process and cache Floors data (🐞 FIX: Use date-string lookup for alignment)
         floors_cached = 0
-        for i, entry in enumerate(response_floors.get('activities-floors', [])):
+        # 1. Create lookup dictionary from API response
+        floors_lookup = {}
+        for entry in response_floors.get('activities-floors', []):
             try:
-                date_str = dates_str_list[i] if i < len(dates_str_list) else None
-                floors_value = int(entry['value'])
-                floors_list.append(floors_value)
-                
-                # Cache floors
-                if date_str:
-                    try:
-                        cache.set_daily_metrics(date=date_str, floors=floors_value)
-                        floors_cached += 1
-                    except:
-                        pass
+                floors_lookup[entry['dateTime']] = int(entry['value'])
             except (KeyError, ValueError):
-                floors_list.append(None)
-        # Ensure same length as dates
-        while len(floors_list) < len(dates_str_list):
-            floors_list.append(None)
+                pass
+        
+        # 2. Iterate over master date list for perfect alignment
+        for date_str in dates_str_list:
+            floors_value = floors_lookup.get(date_str)
+            floors_list.append(floors_value)
+            
+            # Cache floors
+            if floors_value is not None:
+                try:
+                    cache.set_daily_metrics(date=date_str, floors=floors_value)
+                    floors_cached += 1
+                except:
+                    pass
+        
         print(f"✅ Cached {floors_cached} days of floors data")
         
-        # Process and cache Active Zone Minutes data
+        # Process and cache Active Zone Minutes data (🐞 FIX: Use date-string lookup for alignment)
         azm_cached = 0
-        for i, entry in enumerate(response_azm.get('activities-active-zone-minutes', [])):
+        # 1. Create lookup dictionary from API response
+        azm_lookup = {}
+        for entry in response_azm.get('activities-active-zone-minutes', []):
             try:
-                date_str = dates_str_list[i] if i < len(dates_str_list) else None
-                azm_value = entry['value']['activeZoneMinutes']
-                azm_list.append(azm_value)
-                
-                # Cache AZM
-                if date_str:
-                    try:
-                        cache.set_daily_metrics(date=date_str, active_zone_minutes=azm_value)
-                        azm_cached += 1
-                    except:
-                        pass
+                azm_lookup[entry['dateTime']] = entry['value']['activeZoneMinutes']
             except (KeyError, ValueError):
-                azm_list.append(None)
-        # Ensure same length as dates
-        while len(azm_list) < len(dates_str_list):
-            azm_list.append(None)
+                pass
+        
+        # 2. Iterate over master date list for perfect alignment
+        for date_str in dates_str_list:
+            azm_value = azm_lookup.get(date_str)
+            azm_list.append(azm_value)
+            
+            # Cache AZM
+            if azm_value is not None:
+                try:
+                    cache.set_daily_metrics(date=date_str, active_zone_minutes=azm_value)
+                    azm_cached += 1
+                except:
+                    pass
+        
         print(f"✅ Cached {azm_cached} days of AZM data")
     else:
         # Using 100% cached data - skip all API processing
