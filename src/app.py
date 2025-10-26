@@ -2041,20 +2041,30 @@ def display_sleep_details(selected_date, oauth_token):
         print(f"⚠️ Error creating sleep timeline for {selected_date}: {e}")
         pass
     
-    # Get sleep score rating
-    score = sleep_data.get('sleep_score', 0)
-    if score >= 80:
+    # Get sleep scores - use Reality Score as primary
+    reality_score = sleep_data.get('reality_score')
+    proxy_score = sleep_data.get('proxy_score')
+    efficiency = sleep_data.get('efficiency')
+    
+    # Use Reality Score for rating (primary metric)
+    score = reality_score if reality_score is not None else 0
+    
+    if score >= 90:
         rating = "Excellent"
         rating_color = "#4caf50"
         rating_emoji = "🌟"
-    elif score >= 60:
+    elif score >= 80:
         rating = "Good"
         rating_color = "#8bc34a"
         rating_emoji = "😊"
-    else:
+    elif score >= 60:
         rating = "Fair"
         rating_color = "#ff9800"
         rating_emoji = "😐"
+    else:
+        rating = "Poor"
+        rating_color = "#f44336"
+        rating_emoji = "😴"
     
     # Calculate total sleep for percentages
     total_sleep = sleep_data.get('total_sleep', 1)
@@ -2067,14 +2077,31 @@ def display_sleep_details(selected_date, oauth_token):
     return html.Div(style={'background-color': '#f8f9fa', 'padding': '20px', 'border-radius': '10px'}, children=[
         html.H6(f"Sleep Night: {selected_date}", style={'color': '#2c3e50', 'margin-bottom': '15px'}),
         
-        # Summary stats
+        # Summary stats - 3-Tier Sleep Scores
         html.Div(style={'display': 'grid', 'grid-template-columns': 'repeat(auto-fit, minmax(150px, 1fr))', 'gap': '10px', 'margin-bottom': '20px'}, children=[
             html.Div([
-                html.Strong("Sleep Score: "),
-                html.Span(f"{sleep_data.get('sleep_score', 'N/A')}", style={'color': rating_color, 'font-size': '24px', 'font-weight': 'bold'}),
+                html.Strong("Reality Score: ", style={'display': 'block', 'font-size': '11px', 'color': '#666'}),
+                html.Span(f"{reality_score if reality_score is not None else 'N/A'}", 
+                         style={'color': rating_color, 'font-size': '28px', 'font-weight': 'bold'}),
                 html.Br(),
-                html.Span(f"{rating_emoji} {rating}", style={'color': rating_color, 'font-weight': 'bold', 'font-size': '14px'})
+                html.Span(f"{rating_emoji} {rating}", style={'color': rating_color, 'font-weight': 'bold', 'font-size': '13px'}),
+                html.Br(),
+                html.Span("(Primary Metric)", style={'font-size': '10px', 'color': '#999'})
             ]),
+            html.Div([
+                html.Strong("Proxy Score: ", style={'display': 'block', 'font-size': '11px', 'color': '#666'}),
+                html.Span(f"{proxy_score if proxy_score is not None else 'N/A'}", 
+                         style={'font-size': '20px', 'font-weight': 'bold', 'color': '#3498db'}),
+                html.Br(),
+                html.Span("(Fitbit Match)", style={'font-size': '10px', 'color': '#999'})
+            ]) if proxy_score is not None else html.Div(),
+            html.Div([
+                html.Strong("Efficiency: ", style={'display': 'block', 'font-size': '11px', 'color': '#666'}),
+                html.Span(f"{efficiency if efficiency is not None else 'N/A'}%", 
+                         style={'font-size': '20px', 'font-weight': 'bold', 'color': '#95a5a6'}),
+                html.Br(),
+                html.Span("(API Baseline)", style={'font-size': '10px', 'color': '#999'})
+            ]) if efficiency is not None else html.Div(),
             html.Div([
                 html.Strong("Total Sleep: "),
                 html.Span(f"{total_sleep // 60}h {total_sleep % 60}m")
@@ -2083,10 +2110,6 @@ def display_sleep_details(selected_date, oauth_token):
                 html.Strong("Sleep Start: "),
                 html.Span(f"{sleep_data.get('start_time', 'N/A')[:16]}" if sleep_data.get('start_time') else 'N/A')
             ]),
-            html.Div([
-                html.Strong("Efficiency: "),
-                html.Span(f"{sleep_data.get('efficiency', 'N/A')}%", style={'color': '#4caf50', 'font-weight': 'bold'})
-            ]) if sleep_data.get('efficiency') else html.Div(),
         ]),
         
         # Sleep Stages Visual Timeline (Simplified)
