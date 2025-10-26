@@ -2845,45 +2845,45 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         # Process and cache steps
         steps_cached = 0
         for i, entry in enumerate(response_steps['activities-steps']):
-        date_str = dates_str_list[i]
-        if int(entry['value']) == 0:
-            steps = None
-            steps_list.append(None)
-        else:
-            steps = int(entry['value'])
-            steps_list.append(steps)
+            date_str = dates_str_list[i]
+            if int(entry['value']) == 0:
+                steps = None
+                steps_list.append(None)
+            else:
+                steps = int(entry['value'])
+                steps_list.append(steps)
+            
+            # Update cache with steps
+            try:
+                cache.set_daily_metrics(date=date_str, steps=steps)
+                steps_cached += 1
+            except:
+                pass
         
-        # Update cache with steps
-        try:
-            cache.set_daily_metrics(date=date_str, steps=steps)
-            steps_cached += 1
-        except:
-            pass
-    
-    print(f"✅ Cached {steps_cached} days of steps data")
+        print(f"✅ Cached {steps_cached} days of steps data")
 
-    # Process and cache weight
-    weight_cached = 0
-    for entry in response_weight["body-weight"]:
-        date_str = entry['dateTime']
-        # Convert kg to lbs (1 kg = 2.20462 lbs)
-        weight_list += [None]*(dates_str_list.index(date_str)-len(weight_list))
-        weight_kg = float(entry['value'])
-        weight_lbs = round(weight_kg * 2.20462, 1)
-        weight_list.append(weight_lbs)
+        # Process and cache weight
+        weight_cached = 0
+        for entry in response_weight["body-weight"]:
+            date_str = entry['dateTime']
+            # Convert kg to lbs (1 kg = 2.20462 lbs)
+            weight_list += [None]*(dates_str_list.index(date_str)-len(weight_list))
+            weight_kg = float(entry['value'])
+            weight_lbs = round(weight_kg * 2.20462, 1)
+            weight_list.append(weight_lbs)
+            
+            # Cache weight
+            try:
+                cache.set_daily_metrics(date=date_str, weight=weight_lbs)
+                weight_cached += 1
+            except:
+                pass
+        weight_list += [None]*(len(dates_str_list)-len(weight_list))
+        print(f"✅ Cached {weight_cached} days of weight data")
         
-        # Cache weight
-        try:
-            cache.set_daily_metrics(date=date_str, weight=weight_lbs)
-            weight_cached += 1
-        except:
-            pass
-    weight_list += [None]*(len(dates_str_list)-len(weight_list))
-    print(f"✅ Cached {weight_cached} days of weight data")
-    
-    # Process and cache SpO2
-    spo2_cached = 0
-    for entry in response_spo2:
+        # Process and cache SpO2
+        spo2_cached = 0
+        for entry in response_spo2:
         date_str = entry["dateTime"]
         spo2_list += [None]*(dates_str_list.index(date_str)-len(spo2_list))
         eov_list += [None]*(dates_str_list.index(date_str)-len(eov_list))
