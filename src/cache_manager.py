@@ -36,6 +36,8 @@ class FitbitCache:
                     date TEXT PRIMARY KEY,
                     sleep_score INTEGER,
                     efficiency INTEGER,
+                    proxy_score INTEGER,
+                    reality_score INTEGER,
                     total_sleep INTEGER,
                     deep_minutes INTEGER,
                     light_minutes INTEGER,
@@ -46,6 +48,17 @@ class FitbitCache:
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            
+            # Add proxy_score and reality_score columns if they don't exist (migration)
+            try:
+                cursor.execute('ALTER TABLE sleep_cache ADD COLUMN proxy_score INTEGER')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                cursor.execute('ALTER TABLE sleep_cache ADD COLUMN reality_score INTEGER')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
             
             # Advanced metrics table
             cursor.execute('''
@@ -125,7 +138,8 @@ class FitbitCache:
             conn.close()
             return result[0] if result and result[0] is not None else None
     
-    def set_sleep_score(self, date: str, sleep_score: int, efficiency: int = None, 
+    def set_sleep_score(self, date: str, sleep_score: int, efficiency: int = None,
+                       proxy_score: int = None, reality_score: int = None,
                        total_sleep: int = None, deep: int = None, light: int = None,
                        rem: int = None, wake: int = None, start_time: str = None,
                        sleep_data_json: str = None):
@@ -135,14 +149,14 @@ class FitbitCache:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT OR REPLACE INTO sleep_cache 
-                (date, sleep_score, efficiency, total_sleep, deep_minutes, light_minutes, 
+                (date, sleep_score, efficiency, proxy_score, reality_score, total_sleep, deep_minutes, light_minutes, 
                  rem_minutes, wake_minutes, start_time, sleep_data_json, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ''', (date, sleep_score, efficiency, total_sleep, deep, light, rem, wake, 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (date, sleep_score, efficiency, proxy_score, reality_score, total_sleep, deep, light, rem, wake, 
                   start_time, sleep_data_json))
             conn.commit()
             conn.close()
-            print(f"💾 Cached sleep score for {date}: {sleep_score}")
+            print(f"💾 Cached sleep scores for {date}: Reality={reality_score}, Proxy={proxy_score}, Efficiency={efficiency}")
     
     def get_sleep_data(self, date: str) -> Optional[Dict]:
         """Get all cached sleep data for a specific date"""
@@ -150,7 +164,7 @@ class FitbitCache:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT sleep_score, efficiency, total_sleep, deep_minutes, light_minutes,
+                SELECT sleep_score, efficiency, proxy_score, reality_score, total_sleep, deep_minutes, light_minutes,
                        rem_minutes, wake_minutes, start_time, sleep_data_json
                 FROM sleep_cache WHERE date = ?
             ''', (date,))
@@ -161,13 +175,15 @@ class FitbitCache:
                 return {
                     'sleep_score': result[0],
                     'efficiency': result[1],
-                    'total_sleep': result[2],
-                    'deep': result[3],
-                    'light': result[4],
-                    'rem': result[5],
-                    'wake': result[6],
-                    'start_time': result[7],
-                    'sleep_data_json': result[8]
+                    'proxy_score': result[2],
+                    'reality_score': result[3],
+                    'total_sleep': result[4],
+                    'deep': result[5],
+                    'light': result[6],
+                    'rem': result[7],
+                    'wake': result[8],
+                    'start_time': result[9],
+                    'sleep_data_json': result[10]
                 }
             return None
     

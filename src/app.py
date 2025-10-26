@@ -24,6 +24,54 @@ from functools import wraps
 
 log = logging.getLogger(__name__)
 
+# ============================================================
+# CUSTOM SLEEP SCORE CALCULATION
+# ============================================================
+def calculate_sleep_scores(minutes_asleep, deep_min, rem_min, minutes_awake):
+    """
+    Calculates three sleep scores based on raw sleep data components.
+    
+    Since Fitbit API doesn't provide official Sleep Score via Personal OAuth apps,
+    we calculate our own scores for accurate sleep quality assessment.
+    
+    Target: 450 minutes (7.5 hours) total sleep
+    
+    Returns:
+        dict with 'efficiency', 'proxy_score', 'reality_score'
+    """
+    
+    # --- Base Component Calculations ---
+    # Duration (D): Score out of 50
+    D = 50 * min(1, minutes_asleep / 450)
+    
+    # Quality (Q): Score out of 25 (90 min total Deep+REM is max target)
+    Q = 25 * min(1, (deep_min + rem_min) / 90)
+    
+    # --- Restoration Component Variants ---
+    
+    # Restoration (R_B) - Gentle Penalty for Proxy Score (Matches Fitbit's tendency)
+    penalty_B = max(0, (minutes_awake - 15) * 0.25)
+    R_B = max(0, 25 - penalty_B)
+    
+    # Restoration (R_C) - Aggressive Penalty for Reality Score (Primary metric)
+    penalty_C = max(0, (minutes_awake - 10) * 0.30)
+    R_C = max(0, 25 - penalty_C)
+    
+    # --- Final Score Calculation ---
+    
+    # Fitbit Proxy Score (Formula B): Closest match to official score
+    proxy_sum = D + Q + R_B
+    proxy_score = round(proxy_sum - 5)  # 5-point proprietary penalty
+    
+    # Reality Score (Formula C): PRIMARY METRIC - Honest severity assessment
+    reality_sum = D + Q + R_C
+    reality_score = round(reality_sum)
+    
+    return {
+        'proxy_score': max(0, min(100, proxy_score)),  # Clamp 0-100
+        'reality_score': max(0, min(100, reality_score))  # Clamp 0-100
+    }
+
 # Initialize cache
 print("🗄️ Initializing Fitbit data cache...")
 cache = FitbitCache()
@@ -276,20 +324,31 @@ def background_cache_builder(access_token: str):
                                         # DO NOT fallback to efficiency - they are different metrics!
                                         
                                         # Cache sleep data even if sleep_score is None (stages, duration still valuable!)
+                                        # Calculate 3-tier sleep scores
+                                        minutes_asleep = sleep_record.get('minutesAsleep', 0)
+                                        deep_min = sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes', 0)
+                                        rem_min = sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes', 0)
+                                        minutes_awake = sleep_record.get('minutesAwake', 0)
+                                        
+                                        calculated_scores = calculate_sleep_scores(minutes_asleep, deep_min, rem_min, minutes_awake)
+                                        
                                         if sleep_score is not None:
                                             print(f"✅ YESTERDAY REFRESH - Found REAL sleep score for {yesterday}: {sleep_score}")
                                         else:
                                             print(f"⚠️ YESTERDAY REFRESH - No sleep score for {yesterday}, but caching stages/duration")
+                                        print(f"   📊 Calculated scores: Reality={calculated_scores['reality_score']}, Proxy={calculated_scores['proxy_score']}, Efficiency={sleep_record.get('efficiency')}")
                                         
                                         cache.set_sleep_score(
                                             date=yesterday,
                                             sleep_score=sleep_score,  # Can be None - that's OK!
                                             efficiency=sleep_record.get('efficiency'),
-                                            total_sleep=sleep_record.get('minutesAsleep'),
-                                            deep=sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes'),
+                                            proxy_score=calculated_scores['proxy_score'],
+                                            reality_score=calculated_scores['reality_score'],
+                                            total_sleep=minutes_asleep,
+                                            deep=deep_min,
                                             light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
-                                            rem=sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes'),
-                                            wake=sleep_record.get('levels', {}).get('summary', {}).get('wake', {}).get('minutes'),
+                                            rem=rem_min,
+                                            wake=minutes_awake,
                                             start_time=sleep_record.get('startTime'),
                                             sleep_data_json=str(sleep_record)
                                         )
@@ -472,20 +531,31 @@ def background_cache_builder(access_token: str):
                                             # DO NOT fallback to efficiency - they are different metrics!
                                             
                                             # Cache sleep data even if sleep_score is None (stages, duration still valuable!)
+                                            # Calculate 3-tier sleep scores
+                                            minutes_asleep = sleep_record.get('minutesAsleep', 0)
+                                            deep_min = sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes', 0)
+                                            rem_min = sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes', 0)
+                                            minutes_awake = sleep_record.get('minutesAwake', 0)
+                                            
+                                            calculated_scores = calculate_sleep_scores(minutes_asleep, deep_min, rem_min, minutes_awake)
+                                            
                                             if sleep_score is not None:
                                                 print(f"✅ PHASE 3 - Found REAL sleep score for {date_str}: {sleep_score}")
                                             else:
                                                 print(f"⚠️ PHASE 3 - No sleep score for {date_str}, but caching stages/duration")
+                                            print(f"   📊 Calculated scores: Reality={calculated_scores['reality_score']}, Proxy={calculated_scores['proxy_score']}, Efficiency={sleep_record.get('efficiency')}")
                                             
                                             cache.set_sleep_score(
                                                 date=date_str,
                                                 sleep_score=sleep_score,  # Can be None - that's OK!
                                                 efficiency=sleep_record.get('efficiency'),
-                                                total_sleep=sleep_record.get('minutesAsleep'),
-                                                deep=sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes'),
+                                                proxy_score=calculated_scores['proxy_score'],
+                                                reality_score=calculated_scores['reality_score'],
+                                                total_sleep=minutes_asleep,
+                                                deep=deep_min,
                                                 light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
-                                                rem=sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes'),
-                                                wake=sleep_record.get('levels', {}).get('summary', {}).get('wake', {}).get('minutes'),
+                                                rem=rem_min,
+                                                wake=minutes_awake,
                                                 start_time=sleep_record.get('startTime'),
                                                 sleep_data_json=str(sleep_record)
                                             )
@@ -605,6 +675,14 @@ def populate_sleep_score_cache(dates_to_fetch: list, headers: dict, force_refres
                         else:
                             print(f"⚠️ No sleep score found for {date_str} - API didn't provide it (may be too short/incomplete sleep)")
                         
+                        # Calculate 3-tier sleep scores
+                        minutes_asleep = sleep_record.get('minutesAsleep', 0)
+                        deep_min = sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes', 0)
+                        rem_min = sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes', 0)
+                        minutes_awake = sleep_record.get('minutesAwake', 0)
+                        
+                        calculated_scores = calculate_sleep_scores(minutes_asleep, deep_min, rem_min, minutes_awake)
+                        
                         # NEVER fallback to efficiency - efficiency != sleep score!
                         # If Fitbit doesn't provide a sleep score, store None
                         if sleep_score is not None or 'efficiency' in sleep_record:
@@ -613,16 +691,18 @@ def populate_sleep_score_cache(dates_to_fetch: list, headers: dict, force_refres
                                 date=date_str,
                                 sleep_score=sleep_score,
                                 efficiency=sleep_record.get('efficiency'),
-                                total_sleep=sleep_record.get('minutesAsleep'),
-                                deep=sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes'),
+                                proxy_score=calculated_scores['proxy_score'],
+                                reality_score=calculated_scores['reality_score'],
+                                total_sleep=minutes_asleep,
+                                deep=deep_min,
                                 light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
-                                rem=sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes'),
-                                wake=sleep_record.get('levels', {}).get('summary', {}).get('wake', {}).get('minutes'),
+                                rem=rem_min,
+                                wake=minutes_awake,
                                 start_time=sleep_record.get('startTime'),
                                 sleep_data_json=str(sleep_record)
                             )
                             fetched_count += 1
-                            print(f"✅ Cached sleep score for {date_str}: {sleep_score}")
+                            print(f"✅ Cached sleep scores for {date_str} - Reality: {calculated_scores['reality_score']}, Proxy: {calculated_scores['proxy_score']}")
                         break  # Only process main sleep
         except Exception as e:
             print(f"⚠️ Error fetching sleep score for {date_str}: {e}")
@@ -3383,10 +3463,21 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     for date_str in dates_str_list:
         # Try cache first
         cached_sleep = cache.get_sleep_data(date_str)
-        if cached_sleep and cached_sleep['sleep_score'] is not None:
-            print(f"📊 Using CACHED sleep score for {date_str}: {cached_sleep['sleep_score']}")
-            sleep_scores.append({'Date': date_str, 'Score': cached_sleep['sleep_score']})
-            sleep_dates_for_dropdown.append({'label': date_str, 'value': date_str})
+        if cached_sleep:
+            # Use Reality Score as primary metric (most accurate calculated score)
+            reality_score = cached_sleep.get('reality_score')
+            proxy_score = cached_sleep.get('proxy_score')
+            efficiency = cached_sleep.get('efficiency')
+            
+            if reality_score is not None:
+                print(f"📊 Using CACHED sleep scores for {date_str}: Reality={reality_score}, Proxy={proxy_score}, Efficiency={efficiency}")
+                sleep_scores.append({
+                    'Date': date_str, 
+                    'Score': reality_score,  # PRIMARY: Reality Score
+                    'Proxy_Score': proxy_score,
+                    'Efficiency': efficiency
+                })
+                sleep_dates_for_dropdown.append({'label': date_str, 'value': date_str})
             
             # Use cached sleep stage data if available
             if cached_sleep['deep']:
@@ -3414,15 +3505,62 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         else:
             print(f"⚠️ No sleep data found for {date_str} (not in cache or sleep_record_dict)")
     
-    # Sleep Score Chart
+    # Sleep Score Chart - 3-Tier System
     if sleep_scores:
+        import plotly.graph_objects as go
         sleep_score_df = pd.DataFrame(sleep_scores)
-        fig_sleep_score = px.line(sleep_score_df, x='Date', y='Score', 
-                                   title='Sleep Quality Score (0-100)',
-                                   markers=True)
-        fig_sleep_score.update_layout(yaxis_range=[0, 100])
-        fig_sleep_score.add_hline(y=75, line_dash="dot", line_color="green", 
-                                   annotation_text="Good Sleep", annotation_position="right")
+        
+        fig_sleep_score = go.Figure()
+        
+        # Reality Score (PRIMARY - Bold line)
+        fig_sleep_score.add_trace(go.Scatter(
+            x=sleep_score_df['Date'], 
+            y=sleep_score_df['Score'],
+            mode='lines+markers',
+            name='Reality Score (Primary)',
+            line=dict(color='#e74c3c', width=3),
+            marker=dict(size=8),
+            hovertemplate='%{x}<br>Reality Score: %{y}<extra></extra>'
+        ))
+        
+        # Proxy Score (Fitbit Approximation)
+        fig_sleep_score.add_trace(go.Scatter(
+            x=sleep_score_df['Date'], 
+            y=sleep_score_df['Proxy_Score'],
+            mode='lines+markers',
+            name='Proxy Score (Fitbit Match)',
+            line=dict(color='#3498db', width=2, dash='dash'),
+            marker=dict(size=6),
+            hovertemplate='%{x}<br>Proxy Score: %{y}<extra></extra>'
+        ))
+        
+        # Efficiency (API Raw)
+        fig_sleep_score.add_trace(go.Scatter(
+            x=sleep_score_df['Date'], 
+            y=sleep_score_df['Efficiency'],
+            mode='lines+markers',
+            name='Efficiency % (API)',
+            line=dict(color='#95a5a6', width=1.5, dash='dot'),
+            marker=dict(size=5),
+            hovertemplate='%{x}<br>Efficiency: %{y}%<extra></extra>'
+        ))
+        
+        fig_sleep_score.update_layout(
+            title='Sleep Quality Score - 3-Tier System (0-100)<br><sub>Reality Score (Red) is the primary metric - most accurate assessment</sub>',
+            yaxis_range=[0, 100],
+            yaxis_title='Score',
+            xaxis_title='Date',
+            hovermode='x unified',
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        
+        # Reference lines
+        fig_sleep_score.add_hline(y=90, line_dash="dot", line_color="green", 
+                                   annotation_text="Excellent (90+)", annotation_position="right")
+        fig_sleep_score.add_hline(y=80, line_dash="dot", line_color="lightgreen", 
+                                   annotation_text="Good (80+)", annotation_position="right")
+        fig_sleep_score.add_hline(y=60, line_dash="dot", line_color="orange", 
+                                   annotation_text="Fair (60+)", annotation_position="right")
     else:
         fig_sleep_score = px.line(title='Sleep Quality Score (No Data)')
     
