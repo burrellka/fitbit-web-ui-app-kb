@@ -2884,182 +2884,182 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         # Process and cache SpO2
         spo2_cached = 0
         for entry in response_spo2:
-        date_str = entry["dateTime"]
-        spo2_list += [None]*(dates_str_list.index(date_str)-len(spo2_list))
-        eov_list += [None]*(dates_str_list.index(date_str)-len(eov_list))
-        
-        spo2_value = entry["value"]["avg"]
-        spo2_list.append(spo2_value)
-        
-        # Extract EOV (Estimated Oxygen Variation) if available
-        eov_value = None
-        if "value" in entry and isinstance(entry["value"], dict):
-            # EOV can be in different keys depending on API version
-            eov_value = entry["value"].get("eov") or entry["value"].get("variationScore")
-        eov_list.append(eov_value)
-        
-        # Cache SpO2
-        try:
-            cache.set_daily_metrics(date=date_str, spo2=spo2_value)
-            spo2_cached += 1
-        except:
-            pass
-    spo2_list += [None]*(len(dates_str_list)-len(spo2_list))
-    eov_list += [None]*(len(dates_str_list)-len(eov_list))
-    print(f"✅ Cached {spo2_cached} days of SpO2 data")
-    
-    # Process HRV data - only include dates in our range
-    for entry in response_hrv.get("hrv", []):
-        try:
-            if entry["dateTime"] in dates_str_list:  # Only process if in our date range
-                hrv_list += [None]*(dates_str_list.index(entry["dateTime"])-len(hrv_list))
-                hrv_list.append(entry["value"]["dailyRmssd"])
-        except (KeyError, ValueError):
-            pass
-    hrv_list += [None]*(len(dates_str_list)-len(hrv_list))
-    
-    # Process Breathing Rate data - only include dates in our range
-    for entry in response_breathing.get("br", []):
-        try:
-            if entry["dateTime"] in dates_str_list:  # Only process if in our date range
-                breathing_list += [None]*(dates_str_list.index(entry["dateTime"])-len(breathing_list))
-                breathing_list.append(entry["value"]["breathingRate"])
-        except (KeyError, ValueError):
-            pass
-    breathing_list += [None]*(len(dates_str_list)-len(breathing_list))
-    
-    # Process and cache Cardio Fitness Score data
-    cardio_cached = 0
-    for entry in response_cardio_fitness.get("cardioScore", []):
-        try:
             date_str = entry["dateTime"]
-            if date_str in dates_str_list:  # Only process if in our date range
-                cardio_fitness_list += [None]*(dates_str_list.index(date_str)-len(cardio_fitness_list))
-                vo2max_value = entry["value"]["vo2Max"]
-                
-                # Handle range values (e.g., "42-46") by taking the midpoint
-                if isinstance(vo2max_value, str) and '-' in vo2max_value:
-                    parts = vo2max_value.split('-')
-                    if len(parts) == 2:
-                        try:
-                            vo2max_value = (float(parts[0]) + float(parts[1])) / 2
-                        except:
-                            vo2max_value = float(parts[0])  # Use first value if conversion fails
-                
-                vo2max_final = float(vo2max_value) if vo2max_value else None
-                cardio_fitness_list.append(vo2max_final)
-                
-                # Cache cardio fitness
-                try:
-                    if vo2max_final is not None:
-                        cache.set_cardio_fitness(date=date_str, vo2_max=vo2max_final)
-                        cardio_cached += 1
-                except:
-                    pass
-        except (KeyError, ValueError, TypeError):
-            pass
-    cardio_fitness_list += [None]*(len(dates_str_list)-len(cardio_fitness_list))
-    print(f"✅ Cached {cardio_cached} days of cardio fitness data")
-    
-    # Process Temperature data - only include dates in our range
-    for entry in response_temperature.get("tempSkin", []):
-        try:
-            if entry["dateTime"] in dates_str_list:  # Only process if in our date range
-                temperature_list += [None]*(dates_str_list.index(entry["dateTime"])-len(temperature_list))
-                # Temperature value might be nested or direct
-                if isinstance(entry["value"], dict):
-                    temperature_list.append(entry["value"].get("nightlyRelative", entry["value"].get("value")))
-                else:
-                    temperature_list.append(entry["value"])
-        except (KeyError, ValueError):
-            pass
-    temperature_list += [None]*(len(dates_str_list)-len(temperature_list))
-    
-    # Process and cache Calories data
-    calories_cached = 0
-    for i, entry in enumerate(response_calories.get('activities-calories', [])):
-        try:
-            date_str = dates_str_list[i] if i < len(dates_str_list) else None
-            calories_value = int(entry['value'])
-            calories_list.append(calories_value)
+            spo2_list += [None]*(dates_str_list.index(date_str)-len(spo2_list))
+            eov_list += [None]*(dates_str_list.index(date_str)-len(eov_list))
             
-            # Cache calories
-            if date_str:
-                try:
-                    cache.set_daily_metrics(date=date_str, calories=calories_value)
-                    calories_cached += 1
-                except:
-                    pass
-        except (KeyError, ValueError):
+            spo2_value = entry["value"]["avg"]
+            spo2_list.append(spo2_value)
+            
+            # Extract EOV (Estimated Oxygen Variation) if available
+            eov_value = None
+            if "value" in entry and isinstance(entry["value"], dict):
+                # EOV can be in different keys depending on API version
+                eov_value = entry["value"].get("eov") or entry["value"].get("variationScore")
+            eov_list.append(eov_value)
+            
+            # Cache SpO2
+            try:
+                cache.set_daily_metrics(date=date_str, spo2=spo2_value)
+                spo2_cached += 1
+            except:
+                pass
+        spo2_list += [None]*(len(dates_str_list)-len(spo2_list))
+        eov_list += [None]*(len(dates_str_list)-len(eov_list))
+        print(f"✅ Cached {spo2_cached} days of SpO2 data")
+        
+        # Process HRV data - only include dates in our range
+        for entry in response_hrv.get("hrv", []):
+            try:
+                if entry["dateTime"] in dates_str_list:  # Only process if in our date range
+                    hrv_list += [None]*(dates_str_list.index(entry["dateTime"])-len(hrv_list))
+                    hrv_list.append(entry["value"]["dailyRmssd"])
+            except (KeyError, ValueError):
+                pass
+        hrv_list += [None]*(len(dates_str_list)-len(hrv_list))
+        
+        # Process Breathing Rate data - only include dates in our range
+        for entry in response_breathing.get("br", []):
+            try:
+                if entry["dateTime"] in dates_str_list:  # Only process if in our date range
+                    breathing_list += [None]*(dates_str_list.index(entry["dateTime"])-len(breathing_list))
+                    breathing_list.append(entry["value"]["breathingRate"])
+            except (KeyError, ValueError):
+                pass
+        breathing_list += [None]*(len(dates_str_list)-len(breathing_list))
+        
+        # Process and cache Cardio Fitness Score data
+        cardio_cached = 0
+        for entry in response_cardio_fitness.get("cardioScore", []):
+            try:
+                date_str = entry["dateTime"]
+                if date_str in dates_str_list:  # Only process if in our date range
+                    cardio_fitness_list += [None]*(dates_str_list.index(date_str)-len(cardio_fitness_list))
+                    vo2max_value = entry["value"]["vo2Max"]
+                    
+                    # Handle range values (e.g., "42-46") by taking the midpoint
+                    if isinstance(vo2max_value, str) and '-' in vo2max_value:
+                        parts = vo2max_value.split('-')
+                        if len(parts) == 2:
+                            try:
+                                vo2max_value = (float(parts[0]) + float(parts[1])) / 2
+                            except:
+                                vo2max_value = float(parts[0])  # Use first value if conversion fails
+                    
+                    vo2max_final = float(vo2max_value) if vo2max_value else None
+                    cardio_fitness_list.append(vo2max_final)
+                    
+                    # Cache cardio fitness
+                    try:
+                        if vo2max_final is not None:
+                            cache.set_cardio_fitness(date=date_str, vo2_max=vo2max_final)
+                            cardio_cached += 1
+                    except:
+                        pass
+            except (KeyError, ValueError, TypeError):
+                pass
+        cardio_fitness_list += [None]*(len(dates_str_list)-len(cardio_fitness_list))
+        print(f"✅ Cached {cardio_cached} days of cardio fitness data")
+        
+        # Process Temperature data - only include dates in our range
+        for entry in response_temperature.get("tempSkin", []):
+            try:
+                if entry["dateTime"] in dates_str_list:  # Only process if in our date range
+                    temperature_list += [None]*(dates_str_list.index(entry["dateTime"])-len(temperature_list))
+                    # Temperature value might be nested or direct
+                    if isinstance(entry["value"], dict):
+                        temperature_list.append(entry["value"].get("nightlyRelative", entry["value"].get("value")))
+                    else:
+                        temperature_list.append(entry["value"])
+            except (KeyError, ValueError):
+                pass
+        temperature_list += [None]*(len(dates_str_list)-len(temperature_list))
+        
+        # Process and cache Calories data
+        calories_cached = 0
+        for i, entry in enumerate(response_calories.get('activities-calories', [])):
+            try:
+                date_str = dates_str_list[i] if i < len(dates_str_list) else None
+                calories_value = int(entry['value'])
+                calories_list.append(calories_value)
+                
+                # Cache calories
+                if date_str:
+                    try:
+                        cache.set_daily_metrics(date=date_str, calories=calories_value)
+                        calories_cached += 1
+                    except:
+                        pass
+            except (KeyError, ValueError):
+                calories_list.append(None)
+        # Ensure same length as dates
+        while len(calories_list) < len(dates_str_list):
             calories_list.append(None)
-    # Ensure same length as dates
-    while len(calories_list) < len(dates_str_list):
-        calories_list.append(None)
-    print(f"✅ Cached {calories_cached} days of calories data")
-    
-    # Process and cache Distance data
-    distance_cached = 0
-    for i, entry in enumerate(response_distance.get('activities-distance', [])):
-        try:
-            date_str = dates_str_list[i] if i < len(dates_str_list) else None
-            # Convert km to miles (1 km = 0.621371 miles)
-            distance_km = float(entry['value'])
-            distance_miles = round(distance_km * 0.621371, 2)
-            distance_list.append(distance_miles)
-            
-            # Cache distance
-            if date_str:
-                try:
-                    cache.set_daily_metrics(date=date_str, distance=distance_miles)
-                    distance_cached += 1
-                except:
-                    pass
-        except (KeyError, ValueError):
+        print(f"✅ Cached {calories_cached} days of calories data")
+        
+        # Process and cache Distance data
+        distance_cached = 0
+        for i, entry in enumerate(response_distance.get('activities-distance', [])):
+            try:
+                date_str = dates_str_list[i] if i < len(dates_str_list) else None
+                # Convert km to miles (1 km = 0.621371 miles)
+                distance_km = float(entry['value'])
+                distance_miles = round(distance_km * 0.621371, 2)
+                distance_list.append(distance_miles)
+                
+                # Cache distance
+                if date_str:
+                    try:
+                        cache.set_daily_metrics(date=date_str, distance=distance_miles)
+                        distance_cached += 1
+                    except:
+                        pass
+            except (KeyError, ValueError):
+                distance_list.append(None)
+        # Ensure same length as dates
+        while len(distance_list) < len(dates_str_list):
             distance_list.append(None)
-    # Ensure same length as dates
-    while len(distance_list) < len(dates_str_list):
-        distance_list.append(None)
-    print(f"✅ Cached {distance_cached} days of distance data")
-    
-    # Process and cache Floors data
-    floors_cached = 0
-    for i, entry in enumerate(response_floors.get('activities-floors', [])):
-        try:
-            date_str = dates_str_list[i] if i < len(dates_str_list) else None
-            floors_value = int(entry['value'])
-            floors_list.append(floors_value)
-            
-            # Cache floors
-            if date_str:
-                try:
-                    cache.set_daily_metrics(date=date_str, floors=floors_value)
-                    floors_cached += 1
-                except:
-                    pass
-        except (KeyError, ValueError):
+        print(f"✅ Cached {distance_cached} days of distance data")
+        
+        # Process and cache Floors data
+        floors_cached = 0
+        for i, entry in enumerate(response_floors.get('activities-floors', [])):
+            try:
+                date_str = dates_str_list[i] if i < len(dates_str_list) else None
+                floors_value = int(entry['value'])
+                floors_list.append(floors_value)
+                
+                # Cache floors
+                if date_str:
+                    try:
+                        cache.set_daily_metrics(date=date_str, floors=floors_value)
+                        floors_cached += 1
+                    except:
+                        pass
+            except (KeyError, ValueError):
+                floors_list.append(None)
+        # Ensure same length as dates
+        while len(floors_list) < len(dates_str_list):
             floors_list.append(None)
-    # Ensure same length as dates
-    while len(floors_list) < len(dates_str_list):
-        floors_list.append(None)
-    print(f"✅ Cached {floors_cached} days of floors data")
-    
-    # Process and cache Active Zone Minutes data
-    azm_cached = 0
-    for i, entry in enumerate(response_azm.get('activities-active-zone-minutes', [])):
-        try:
-            date_str = dates_str_list[i] if i < len(dates_str_list) else None
-            azm_value = entry['value']['activeZoneMinutes']
-            azm_list.append(azm_value)
-            
-            # Cache AZM
-            if date_str:
-                try:
-                    cache.set_daily_metrics(date=date_str, active_zone_minutes=azm_value)
-                    azm_cached += 1
-                except:
-                    pass
-        except (KeyError, ValueError):
-            azm_list.append(None)
+        print(f"✅ Cached {floors_cached} days of floors data")
+        
+        # Process and cache Active Zone Minutes data
+        azm_cached = 0
+        for i, entry in enumerate(response_azm.get('activities-active-zone-minutes', [])):
+            try:
+                date_str = dates_str_list[i] if i < len(dates_str_list) else None
+                azm_value = entry['value']['activeZoneMinutes']
+                azm_list.append(azm_value)
+                
+                # Cache AZM
+                if date_str:
+                    try:
+                        cache.set_daily_metrics(date=date_str, active_zone_minutes=azm_value)
+                        azm_cached += 1
+                    except:
+                        pass
+            except (KeyError, ValueError):
+                azm_list.append(None)
         # Ensure same length as dates
         while len(azm_list) < len(dates_str_list):
             azm_list.append(None)
