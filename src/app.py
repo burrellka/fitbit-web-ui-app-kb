@@ -2446,12 +2446,76 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     if all_cached and not refresh_today:
         print(f"✅ 100% CACHED! Serving report from cache (0 API calls)")
         # Skip ALL API calls - serve directly from cache
-        # We'll still need to populate the response structures from cache below
-        user_profile = {"user": {"displayName": "Cached User"}}  # Dummy profile
-        response_heartrate = {"activities-heart": [{"dateTime": d} for d in dates_str_list]}
+        # Populate ALL data from cache
+        user_profile = {"user": {"displayName": "Cached User", "firstName": "Cached", "lastName": "User"}}
+        
+        # Read all daily metrics from cache
+        for date_str in dates_str_list:
+            daily_metrics = cache.get_daily_metrics(date_str)
+            
+            if daily_metrics:
+                # Heart rate data
+                rhr_list.append(daily_metrics.get('resting_heart_rate'))
+                fat_burn_minutes_list.append(daily_metrics.get('fat_burn_minutes'))
+                cardio_minutes_list.append(daily_metrics.get('cardio_minutes'))
+                peak_minutes_list.append(daily_metrics.get('peak_minutes'))
+                
+                # Steps, weight, SpO2
+                steps_list.append(daily_metrics.get('steps'))
+                weight_list.append(daily_metrics.get('weight'))
+                spo2_list.append(daily_metrics.get('spo2'))
+                
+                # Calories, distance, floors, AZM
+                calories_list.append(daily_metrics.get('calories'))
+                distance_list.append(daily_metrics.get('distance'))
+                floors_list.append(daily_metrics.get('floors'))
+                azm_list.append(daily_metrics.get('active_zone_minutes'))
+            else:
+                # Append None if no cache data
+                rhr_list.append(None)
+                fat_burn_minutes_list.append(None)
+                cardio_minutes_list.append(None)
+                peak_minutes_list.append(None)
+                steps_list.append(None)
+                weight_list.append(None)
+                spo2_list.append(None)
+                calories_list.append(None)
+                distance_list.append(None)
+                floors_list.append(None)
+                azm_list.append(None)
+            
+            # Advanced metrics
+            advanced_metrics = cache.get_advanced_metrics(date_str)
+            if advanced_metrics:
+                hrv_list.append(advanced_metrics.get('hrv'))
+                breathing_list.append(advanced_metrics.get('breathing_rate'))
+                temperature_list.append(advanced_metrics.get('temperature'))
+            else:
+                hrv_list.append(None)
+                breathing_list.append(None)
+                temperature_list.append(None)
+            
+            # Cardio fitness
+            cardio_data = cache.get_cardio_fitness(date_str)
+            cardio_fitness_list.append(cardio_data)
+            
+            # Dates (already in dates_str_list, just append to dates_list)
+            dates_list.append(datetime.strptime(date_str, '%Y-%m-%d'))
+        
+        # Create dummy response structures (won't be used in processing)
+        response_heartrate = {"activities-heart": []}
         response_steps = {"activities-steps": []}
         response_weight = {"weight": []}
         response_spo2 = []
+        response_calories = {"activities-calories": []}
+        response_distance = {"activities-distance": []}
+        response_floors = {"activities-floors": []}
+        response_azm = {"activities-active-zone-minutes": []}
+        response_hrv = {"hrv": []}
+        response_breathing = {"br": []}
+        response_temperature = {"tempSkin": []}
+        response_cardio_fitness = {"cardioScore": []}
+        eov_list = [None] * len(dates_str_list)  # Not cached currently
     elif all_cached and refresh_today:
         print(f"🔄 Cache complete BUT refreshing TODAY ({today}) for real-time data...")
         # Refresh today's data, but serve the rest from cache
@@ -2703,75 +2767,84 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     report_title = "Wellness Report - " + user_profile["user"]["firstName"] + " " + user_profile["user"]["lastName"]
     report_dates_range = datetime.fromisoformat(start_date).strftime("%d %B, %Y") + " – " + datetime.fromisoformat(end_date).strftime("%d %B, %Y")
     generated_on_date = "Report Generated : " + datetime.today().date().strftime("%d %B, %Y")
-    dates_list = []
-    dates_str_list = []
-    rhr_list = []
-    steps_list = []
-    weight_list = []
-    spo2_list = []
-    sleep_record_dict = {}
-    deep_sleep_list, light_sleep_list, rem_sleep_list, awake_list, total_sleep_list, sleep_start_times_list = [],[],[],[],[],[]
-    fat_burn_minutes_list, cardio_minutes_list, peak_minutes_list = [], [], []
     
-    # New data lists
-    hrv_list = []
-    breathing_list = []
-    cardio_fitness_list = []
-    temperature_list = []
-    calories_list = []
-    distance_list = []
-    floors_list = []
-    azm_list = []
-    eov_list = []  # Estimated Oxygen Variation for sleep apnea monitoring
+    # Only reset lists if NOT using 100% cached data
+    if not (all_cached and not refresh_today):
+        dates_list = []
+        dates_str_list = []
+        rhr_list = []
+        steps_list = []
+        weight_list = []
+        spo2_list = []
+        sleep_record_dict = {}
+        deep_sleep_list, light_sleep_list, rem_sleep_list, awake_list, total_sleep_list, sleep_start_times_list = [],[],[],[],[],[]
+        fat_burn_minutes_list, cardio_minutes_list, peak_minutes_list = [], [], []
+        
+        # New data lists
+        hrv_list = []
+        breathing_list = []
+        cardio_fitness_list = []
+        temperature_list = []
+        calories_list = []
+        distance_list = []
+        floors_list = []
+        azm_list = []
+        eov_list = []  # Estimated Oxygen Variation for sleep apnea monitoring
+    else:
+        # Using cached data - lists already populated above
+        print(f"📊 Using {len(dates_str_list)} days from cache")
+        sleep_record_dict = {}
+        deep_sleep_list, light_sleep_list, rem_sleep_list, awake_list, total_sleep_list, sleep_start_times_list = [],[],[],[],[],[]
 
-    # 🚀 CACHE-FIRST: Check cache before processing API responses
-    print(f"📊 Processing data for {len(temp_dates_list)} dates...")
-    cached_daily_count = 0
-    
-    for entry in response_heartrate['activities-heart']:
-        date_str = entry['dateTime']
-        dates_str_list.append(date_str)
-        dates_list.append(datetime.strptime(date_str, '%Y-%m-%d'))
+    # 🚀 CACHE-FIRST: Check cache before processing API responses (only if not 100% cached)
+    if not (all_cached and not refresh_today):
+        print(f"📊 Processing data for {len(temp_dates_list)} dates...")
+        cached_daily_count = 0
         
-        # Extract values
-        try:
-            fat_burn = entry["value"]["heartRateZones"][1]["minutes"]
-            cardio = entry["value"]["heartRateZones"][2]["minutes"]
-            peak = entry["value"]["heartRateZones"][3]["minutes"]
-            fat_burn_minutes_list.append(fat_burn)
-            cardio_minutes_list.append(cardio)
-            peak_minutes_list.append(peak)
-        except KeyError as E:
-            fat_burn, cardio, peak = None, None, None
-            fat_burn_minutes_list.append(None)
-            cardio_minutes_list.append(None)
-            peak_minutes_list.append(None)
+        for entry in response_heartrate['activities-heart']:
+            date_str = entry['dateTime']
+            dates_str_list.append(date_str)
+            dates_list.append(datetime.strptime(date_str, '%Y-%m-%d'))
+            
+            # Extract values
+            try:
+                fat_burn = entry["value"]["heartRateZones"][1]["minutes"]
+                cardio = entry["value"]["heartRateZones"][2]["minutes"]
+                peak = entry["value"]["heartRateZones"][3]["minutes"]
+                fat_burn_minutes_list.append(fat_burn)
+                cardio_minutes_list.append(cardio)
+                peak_minutes_list.append(peak)
+            except KeyError as E:
+                fat_burn, cardio, peak = None, None, None
+                fat_burn_minutes_list.append(None)
+                cardio_minutes_list.append(None)
+                peak_minutes_list.append(None)
+            
+            if 'restingHeartRate' in entry['value']:
+                rhr = entry['value']['restingHeartRate']
+                rhr_list.append(rhr)
+            else:
+                rhr = None
+                rhr_list.append(None)
+            
+            # Cache daily metrics immediately
+            try:
+                cache.set_daily_metrics(
+                    date=date_str,
+                    resting_heart_rate=rhr,
+                    fat_burn_minutes=fat_burn,
+                    cardio_minutes=cardio,
+                    peak_minutes=peak
+                )
+                cached_daily_count += 1
+            except:
+                pass
         
-        if 'restingHeartRate' in entry['value']:
-            rhr = entry['value']['restingHeartRate']
-            rhr_list.append(rhr)
-        else:
-            rhr = None
-            rhr_list.append(None)
+        print(f"✅ Cached {cached_daily_count} days of heart rate data")
         
-        # Cache daily metrics immediately
-        try:
-            cache.set_daily_metrics(
-                date=date_str,
-                resting_heart_rate=rhr,
-                fat_burn_minutes=fat_burn,
-                cardio_minutes=cardio,
-                peak_minutes=peak
-            )
-            cached_daily_count += 1
-        except:
-            pass
-    
-    print(f"✅ Cached {cached_daily_count} days of heart rate data")
-    
-    # Process and cache steps
-    steps_cached = 0
-    for i, entry in enumerate(response_steps['activities-steps']):
+        # Process and cache steps
+        steps_cached = 0
+        for i, entry in enumerate(response_steps['activities-steps']):
         date_str = dates_str_list[i]
         if int(entry['value']) == 0:
             steps = None
@@ -2987,10 +3060,13 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                     pass
         except (KeyError, ValueError):
             azm_list.append(None)
-    # Ensure same length as dates
-    while len(azm_list) < len(dates_str_list):
-        azm_list.append(None)
-    print(f"✅ Cached {azm_cached} days of AZM data")
+        # Ensure same length as dates
+        while len(azm_list) < len(dates_str_list):
+            azm_list.append(None)
+        print(f"✅ Cached {azm_cached} days of AZM data")
+    else:
+        # Using 100% cached data - skip all API processing
+        print("📊 All daily metrics loaded from cache - skipping API processing")
 
     # 🚀 USE CACHE FOR SLEEP DATA - Only fetch missing dates!
     print(f"📊 Fetching sleep data for {len(dates_str_list)} dates...")
