@@ -238,9 +238,10 @@ class FitbitCache:
             
             # Get dates already in cache
             if metric_type == 'sleep':
+                # Check for reality_score instead of sleep_score (since API doesn't provide sleep_score for Personal apps)
                 cursor.execute('''
                     SELECT date FROM sleep_cache 
-                    WHERE date >= ? AND date <= ? AND sleep_score IS NOT NULL
+                    WHERE date >= ? AND date <= ? AND reality_score IS NOT NULL
                 ''', (start_date, end_date))
             else:  # advanced_metrics
                 cursor.execute('''
@@ -283,7 +284,8 @@ class FitbitCache:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            cursor.execute('SELECT COUNT(*), MIN(date), MAX(date) FROM sleep_cache WHERE sleep_score IS NOT NULL')
+            # Check for reality_score instead of sleep_score (since API doesn't provide sleep_score for Personal apps)
+            cursor.execute('SELECT COUNT(*), MIN(date), MAX(date) FROM sleep_cache WHERE reality_score IS NOT NULL')
             sleep_stats = cursor.fetchone()
             
             cursor.execute('SELECT COUNT(*), MIN(date), MAX(date) FROM advanced_metrics_cache')
@@ -304,8 +306,8 @@ class FitbitCache:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Sleep data
-            cursor.execute('SELECT COUNT(*), MIN(date), MAX(date) FROM sleep_cache WHERE sleep_score IS NOT NULL')
+            # Sleep data - Check for reality_score instead of sleep_score (since API doesn't provide sleep_score for Personal apps)
+            cursor.execute('SELECT COUNT(*), MIN(date), MAX(date) FROM sleep_cache WHERE reality_score IS NOT NULL')
             sleep_stats = cursor.fetchone()
             
             # HRV
