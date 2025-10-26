@@ -1248,6 +1248,13 @@ app.layout = html.Div(children=[
             figure=px.bar(),
             config= {'displaylogo': False}
         ),
+        
+        # Sleep Data Table with 3-Tier Scores
+        html.H5("💤 Sleep Data Overview", style={'font-weight': 'bold', 'margin-top': '30px'}),
+        html.P("Detailed sleep metrics for each night including Reality Score (primary), Proxy Score (Fitbit match), and sleep stage durations.", style={'color': '#666'}),
+        html.Div(id='sleep_data_table', style={'max-width': '1400px', 'margin': 'auto', 'font-weight': 'bold'}, children=[]),
+        html.Div(style={"height": '20px'}),
+        
         dcc.Graph(
             id='graph_sleep_regularity',
             figure=px.bar(),
@@ -2390,7 +2397,7 @@ def disable_button_and_calculate(n_clicks, oauth_token, refresh_token, token_exp
     return False, True, True
 
 # Fetch data and update graphs on click of submit
-@app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_eov', 'figure'), Output('eov_table', 'children'), Output('graph_sleep', 'figure'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise-type-filter', 'options'), Output('exercise_log_table', 'children'), Output('workout-date-selector', 'options'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('sleep-date-selector', 'options'), Output('graph_exercise_sleep_correlation', 'figure'), Output('graph_azm_sleep_correlation', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
+@app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_eov', 'figure'), Output('eov_table', 'children'), Output('graph_sleep', 'figure'), Output('sleep_data_table', 'children'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise-type-filter', 'options'), Output('exercise_log_table', 'children'), Output('workout-date-selector', 'options'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('sleep-date-selector', 'options'), Output('graph_exercise_sleep_correlation', 'figure'), Output('graph_azm_sleep_correlation', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
 Input('submit-button', 'disabled'),
 State('my-date-picker-range', 'start_date'), State('my-date-picker-range', 'end_date'), State('oauth-token', 'data'),
 prevent_initial_call=True)
@@ -3598,6 +3605,66 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     else:
         fig_sleep_stages_pie = px.pie(title='Sleep Stages (No Data)')
     
+    # Create Sleep Data Table with 3-Tier Scores
+    sleep_data_rows = []
+    for date_str in dates_str_list:
+        cached_sleep = cache.get_sleep_data(date_str)
+        if cached_sleep and cached_sleep.get('reality_score') is not None:
+            reality_score = cached_sleep.get('reality_score', 'N/A')
+            proxy_score = cached_sleep.get('proxy_score', 'N/A')
+            efficiency = cached_sleep.get('efficiency', 'N/A')
+            
+            # Determine rating based on Reality Score
+            if reality_score >= 90:
+                rating = "Excellent"
+            elif reality_score >= 80:
+                rating = "Good"
+            elif reality_score >= 60:
+                rating = "Fair"
+            else:
+                rating = "Poor"
+            
+            sleep_data_rows.append({
+                'Date': date_str,
+                'Reality Score': reality_score,
+                'Rating': rating,
+                'Proxy Score': proxy_score,
+                'Efficiency %': efficiency,
+                'Deep Sleep (min)': cached_sleep.get('deep', 0),
+                'REM Sleep (min)': cached_sleep.get('rem', 0),
+                'Light Sleep (min)': cached_sleep.get('light', 0),
+                'Awake (min)': cached_sleep.get('wake', 0)
+            })
+    
+    if sleep_data_rows:
+        sleep_data_df = pd.DataFrame(sleep_data_rows)
+        sleep_data_table_output = dash_table.DataTable(
+            id='sleep-data-table',
+            data=sleep_data_df.to_dict('records'),
+            columns=[{"name": i, "id": i} for i in sleep_data_df.columns],
+            style_data_conditional=[
+                {'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'},
+                # Color code ratings
+                {'if': {'filter_query': '{Rating} = "Excellent"', 'column_id': 'Rating'}, 
+                 'backgroundColor': '#4caf50', 'color': 'white', 'fontWeight': 'bold'},
+                {'if': {'filter_query': '{Rating} = "Good"', 'column_id': 'Rating'}, 
+                 'backgroundColor': '#8bc34a', 'color': 'white', 'fontWeight': 'bold'},
+                {'if': {'filter_query': '{Rating} = "Fair"', 'column_id': 'Rating'}, 
+                 'backgroundColor': '#ff9800', 'color': 'white', 'fontWeight': 'bold'},
+                {'if': {'filter_query': '{Rating} = "Poor"', 'column_id': 'Rating'}, 
+                 'backgroundColor': '#f44336', 'color': 'white', 'fontWeight': 'bold'},
+            ],
+            style_header={'backgroundColor': '#336699', 'fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'},
+            style_cell={'textAlign': 'center'},
+            page_size=10,
+            export_format='csv',
+            export_headers='display',
+            sort_action='native',
+            filter_action='native'
+        )
+    else:
+        sleep_data_table_output = html.P("No sleep data available for this period.", style={'text-align': 'center', 'color': '#888'})
+    
     # Phase 4: Exercise-Sleep Correlation
     correlation_data = []
     for i, date_str in enumerate(dates_str_list[:-1]):  # Skip last day
@@ -3701,7 +3768,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     else:
         fig_azm_sleep_correlation = px.scatter(title='AZM-Sleep Correlation (Insufficient Data)')
     
-    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_spo2, spo2_summary_table, fig_eov, eov_summary_table, fig_sleep_minutes, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_filter_options, exercise_log_table, workout_dates_for_dropdown, fig_sleep_score, fig_sleep_stages_pie, sleep_dates_for_dropdown, fig_correlation, fig_azm_sleep_correlation, correlation_insights, ""
+    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_spo2, spo2_summary_table, fig_eov, eov_summary_table, fig_sleep_minutes, sleep_data_table_output, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_filter_options, exercise_log_table, workout_dates_for_dropdown, fig_sleep_score, fig_sleep_stages_pie, sleep_dates_for_dropdown, fig_correlation, fig_azm_sleep_correlation, correlation_insights, ""
 
 # ========================================
 # REST API Endpoints for MCP Server Integration
