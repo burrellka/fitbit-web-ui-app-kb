@@ -1663,9 +1663,9 @@ def display_workout_details(selected_date, oauth_token):
             start_dt = datetime.fromisoformat(start_time.replace('Z', ''))
             date_str = start_dt.strftime('%Y-%m-%d')
             
-            # Fetch intraday heart rate data
+            # Fetch intraday heart rate data (🐞 FIX #3: Use 1min instead of 1sec to conserve API budget)
             headers = {'Authorization': f'Bearer {oauth_token}'}
-            url = f"https://api.fitbit.com/1/user/-/activities/heart/date/{date_str}/1d/1sec.json"
+            url = f"https://api.fitbit.com/1/user/-/activities/heart/date/{date_str}/1d/1min.json"
             response = requests.get(url, headers=headers)
             
             if response.status_code != 200:

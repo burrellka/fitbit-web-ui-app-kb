@@ -153,8 +153,8 @@ class FitbitCache:
                 cursor.execute('''
                     INSERT OR REPLACE INTO sleep_cache 
                     (date, sleep_score, efficiency, proxy_score, reality_score, total_sleep, deep_minutes, light_minutes, 
-                     rem_minutes, wake_minutes, start_time, sleep_data_json, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                     rem_minutes, wake_minutes, start_time, sleep_data_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (date, sleep_score, efficiency, proxy_score, reality_score, total_sleep, deep, light, rem, wake, 
                       start_time, sleep_data_json))
                 print(f"🔍 [CACHE DEBUG] Execute completed, committing...")
