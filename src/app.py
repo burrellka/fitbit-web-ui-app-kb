@@ -2716,6 +2716,30 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         response_breathing = {"br": []}
         response_temperature = {"tempSkin": []}
         response_cardio_fitness = {"cardioScore": []}
+        
+        # 🐞 FIX: Load activities from cache (CRITICAL - was missing!)
+        print("📥 Loading activities from cache...")
+        response_activities = {"activities": []}
+        total_activities = 0
+        
+        for date_str in dates_str_list:
+            activities_for_date = cache.get_activities(date_str)
+            for act in activities_for_date:
+                # Reconstruct the activity dict in API format
+                activity_dict = {
+                    'logId': act.get('activity_id'),
+                    'activityName': act.get('activity_name'),
+                    'startTime': f"{date_str}T00:00:00.000",  # Use the date from iteration
+                    'duration': act.get('duration_ms'),
+                    'calories': act.get('calories'),
+                    'averageHeartRate': act.get('avg_heart_rate'),
+                    'steps': act.get('steps'),
+                    'distance': act.get('distance')
+                }
+                response_activities['activities'].append(activity_dict)
+                total_activities += 1
+        
+        print(f"✅ Loaded {total_activities} activities from cache")
     elif all_cached and refresh_today:
         print(f"🔄 Cache complete BUT refreshing TODAY ({today}) for real-time data...")
         # Refresh today's data, but serve the rest from cache
@@ -3306,8 +3330,8 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                     sleep_start_time = sleep_start_time + timedelta(hours=-12)
                 sleep_time_of_day = sleep_start_time.time()
                 
-                # DEBUG: Log what we're pulling from cache
-                print(f"📊 Using CACHED sleep score for {date_str}: {cached_data['sleep_score']} (efficiency: {cached_data.get('efficiency', 'N/A')})")
+                # 🐞 FIX: Use reality_score instead of deprecated sleep_score field
+                print(f"📊 Using CACHED sleep scores for {date_str}: Reality={cached_data.get('reality_score')}, Proxy={cached_data.get('proxy_score')}, Efficiency={cached_data.get('efficiency', 'N/A')}")
                 
                 sleep_record_dict[date_str] = {
                     'deep': cached_data['deep'],
