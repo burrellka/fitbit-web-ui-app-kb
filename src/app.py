@@ -1931,11 +1931,23 @@ def display_sleep_details(selected_date, oauth_token):
     if not selected_date or not oauth_token:
         return html.Div("Select a sleep date to view details", style={'color': '#999', 'font-style': 'italic'})
     
-    # Get stored sleep data for the date
-    if selected_date not in sleep_detail_data_store:
+    # 🐞 FIX #1: Fetch data directly from cache instead of global store
+    sleep_data = cache.get_sleep_data(selected_date)
+    if not sleep_data:
         return html.Div(f"No sleep data available for {selected_date}", style={'color': '#999'})
     
-    sleep_data = sleep_detail_data_store[selected_date]
+    # Build sleep_data dict format expected by the rest of the function
+    sleep_data = {
+        'reality_score': sleep_data.get('reality_score'),
+        'proxy_score': sleep_data.get('proxy_score'),
+        'efficiency': sleep_data.get('efficiency'),
+        'deep': sleep_data.get('deep'),
+        'light': sleep_data.get('light'),
+        'rem': sleep_data.get('rem'),
+        'wake': sleep_data.get('wake'),
+        'total_sleep': sleep_data.get('total_sleep'),
+        'start_time': sleep_data.get('start_time')
+    }
     
     # Try to build chronological sleep timeline from detailed data
     timeline_figure = None
@@ -2402,6 +2414,11 @@ Input('submit-button', 'disabled'),
 State('my-date-picker-range', 'start_date'), State('my-date-picker-range', 'end_date'), State('oauth-token', 'data'),
 prevent_initial_call=True)
 def update_output(n_clicks, start_date, end_date, oauth_token):
+    # 🐞 FIX #2: Clear global stores to prevent stale data pollution
+    global exercise_data_store, sleep_detail_data_store
+    exercise_data_store.clear()
+    sleep_detail_data_store.clear()
+    
     # Advanced metrics now always enabled with smart caching!
     advanced_metrics_enabled = ['advanced']  # Always enabled
 
@@ -2484,7 +2501,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                 floors_list.append(None)
                 azm_list.append(None)
             
-            # Advanced metrics
+            # Advanced metrics (🐞 FIX #3: Added EOV to cache reading)
             advanced_metrics = cache.get_advanced_metrics(date_str)
             if advanced_metrics:
                 hrv_list.append(advanced_metrics.get('hrv'))
@@ -2494,6 +2511,12 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                 hrv_list.append(None)
                 breathing_list.append(None)
                 temperature_list.append(None)
+            
+            # EOV from daily metrics (SpO2 related)
+            if daily_metrics:
+                eov_list.append(daily_metrics.get('eov'))
+            else:
+                eov_list.append(None)
             
             # Cardio fitness
             cardio_data = cache.get_cardio_fitness(date_str)
@@ -2515,7 +2538,6 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         response_breathing = {"br": []}
         response_temperature = {"tempSkin": []}
         response_cardio_fitness = {"cardioScore": []}
-        eov_list = [None] * len(dates_str_list)  # Not cached currently
     elif all_cached and refresh_today:
         print(f"🔄 Cache complete BUT refreshing TODAY ({today}) for real-time data...")
         # Refresh today's data, but serve the rest from cache
