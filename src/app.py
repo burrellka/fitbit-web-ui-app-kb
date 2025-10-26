@@ -155,6 +155,115 @@ def automatic_daily_sync():
             print(f"❌ Auto-sync error: {e}")
             # Continue running despite errors
 
+def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, cache_manager):
+    """
+    🐞 FIX: Reusable function to process and cache daily metrics using date-string lookups
+    
+    This function handles the extraction and caching of Phase 1 range metrics.
+    Used by both background_cache_builder (Phase 1) and update_output (report generation).
+    
+    Args:
+        dates_str_list: List of date strings (YYYY-MM-DD) - master date list
+        metric_type: One of: 'steps', 'calories', 'distance', 'floors', 'azm'
+        response_data: Raw API response JSON
+        cache_manager: FitbitCache instance
+    
+    Returns:
+        int: Number of days successfully cached
+    """
+    cached_count = 0
+    
+    if metric_type == 'steps':
+        # Create lookup dictionary
+        steps_lookup = {entry['dateTime']: int(entry['value']) 
+                       for entry in response_data.get('activities-steps', [])}
+        
+        # Iterate over master date list
+        for date_str in dates_str_list:
+            steps_value = steps_lookup.get(date_str)
+            if steps_value == 0:
+                steps_value = None  # Treat 0 as None
+            
+            if steps_value is not None:
+                try:
+                    cache_manager.set_daily_metrics(date=date_str, steps=steps_value)
+                    cached_count += 1
+                except:
+                    pass
+    
+    elif metric_type == 'calories':
+        calories_lookup = {}
+        for entry in response_data.get('activities-calories', []):
+            try:
+                calories_lookup[entry['dateTime']] = int(entry['value'])
+            except (KeyError, ValueError):
+                pass
+        
+        for date_str in dates_str_list:
+            calories_value = calories_lookup.get(date_str)
+            if calories_value is not None:
+                try:
+                    cache_manager.set_daily_metrics(date=date_str, calories=calories_value)
+                    cached_count += 1
+                except:
+                    pass
+    
+    elif metric_type == 'distance':
+        distance_lookup = {}
+        for entry in response_data.get('activities-distance', []):
+            try:
+                distance_km = float(entry['value'])
+                distance_miles = round(distance_km * 0.621371, 2)
+                distance_lookup[entry['dateTime']] = distance_miles
+            except (KeyError, ValueError):
+                pass
+        
+        for date_str in dates_str_list:
+            distance_value = distance_lookup.get(date_str)
+            if distance_value is not None:
+                try:
+                    cache_manager.set_daily_metrics(date=date_str, distance=distance_value)
+                    cached_count += 1
+                except:
+                    pass
+    
+    elif metric_type == 'floors':
+        floors_lookup = {}
+        for entry in response_data.get('activities-floors', []):
+            try:
+                floors_lookup[entry['dateTime']] = int(entry['value'])
+            except (KeyError, ValueError):
+                pass
+        
+        for date_str in dates_str_list:
+            floors_value = floors_lookup.get(date_str)
+            if floors_value is not None:
+                try:
+                    cache_manager.set_daily_metrics(date=date_str, floors=floors_value)
+                    cached_count += 1
+                except:
+                    pass
+    
+    elif metric_type == 'azm':
+        azm_lookup = {}
+        for entry in response_data.get('activities-active-zone-minutes', []):
+            try:
+                azm_lookup[entry['dateTime']] = entry['value']['activeZoneMinutes']
+            except (KeyError, ValueError):
+                pass
+        
+        for date_str in dates_str_list:
+            azm_value = azm_lookup.get(date_str)
+            if azm_value is not None:
+                try:
+                    cache_manager.set_daily_metrics(date=date_str, active_zone_minutes=azm_value)
+                    cached_count += 1
+                except:
+                    pass
+    
+    return cached_count
+
+
 def background_cache_builder(access_token: str):
     """
     PHASED BACKGROUND CACHE BUILDER
@@ -224,6 +333,13 @@ def background_cache_builder(access_token: str):
             start_date_str = start_date.strftime('%Y-%m-%d')
             end_date_str = end_date.strftime('%Y-%m-%d')
             
+            # Generate master date list for caching alignment
+            dates_str_list = []
+            current = start_date
+            while current <= end_date:
+                dates_str_list.append(current.strftime('%Y-%m-%d'))
+                current += timedelta(days=1)
+            
             phase1_calls = 0
             rate_limit_hit = False  # Flag to track if we hit rate limit
             
@@ -257,8 +373,30 @@ def background_cache_builder(access_token: str):
                     # Only count successful calls
                     api_calls_this_hour += 1
                     phase1_calls += 1
-                    print(f"✅ Success ({response.status_code})")
-                    # Data is cached automatically by report generation logic
+                    print(f"✅ Success ({response.status_code})", end="")
+                    
+                    # 🐞 FIX: Process and cache the fetched data immediately
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        cached = 0
+                        
+                        if metric_name == "Steps":
+                            cached = process_and_cache_daily_metrics(dates_str_list, 'steps', response_data, cache)
+                        elif metric_name == "Calories":
+                            cached = process_and_cache_daily_metrics(dates_str_list, 'calories', response_data, cache)
+                        elif metric_name == "Distance":
+                            cached = process_and_cache_daily_metrics(dates_str_list, 'distance', response_data, cache)
+                        elif metric_name == "Floors":
+                            cached = process_and_cache_daily_metrics(dates_str_list, 'floors', response_data, cache)
+                        elif metric_name == "Active Zone Minutes":
+                            cached = process_and_cache_daily_metrics(dates_str_list, 'azm', response_data, cache)
+                        
+                        if cached > 0:
+                            print(f" → 💾 Cached {cached} days")
+                        else:
+                            print()  # New line
+                    else:
+                        print()  # New line
                     
                 except Exception as e:
                     print(f"⚠️ Error: {e}")
