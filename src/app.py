@@ -2245,40 +2245,27 @@ def display_sleep_details(selected_date, oauth_token):
     ])
 
 @app.callback(
-    Output('exercise_log_table', 'children', allow_duplicate=True),
+    Output('exercise-data-table', 'data', allow_duplicate=True),
     Input('exercise-type-filter', 'value'),
-    State('exercise_log_table', 'children'),
+    State('exercise-data-table', 'data'),
+    State('exercise-data-table', 'columns'),
     prevent_initial_call=True
 )
-def filter_exercise_log(selected_type, current_table):
+def filter_exercise_log(selected_type, full_data, columns):
     """Filter exercise log by activity type"""
-    if not selected_type or not isinstance(current_table, dash_table.DataTable):
+    if not selected_type or not full_data:
         return dash.no_update
     
-    # Get the full data from the table
-    try:
-        full_data = current_table.data
-        
-        # Filter based on selected type
-        if selected_type == 'All':
-            filtered_data = full_data
-        else:
-            filtered_data = [row for row in full_data if row.get('Activity') == selected_type]
-        
-        if filtered_data and len(filtered_data) > 0:
-            return dash_table.DataTable(
-                filtered_data,
-                [{"name": i, "id": i} for i in full_data[0].keys()],
-                style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}],
-                style_header={'backgroundColor': '#336699','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'},
-                style_cell={'textAlign': 'center'},
-                page_size=20
-            )
-        else:
-            return html.P(f"No {selected_type} activities in this period.", style={'text-align': 'center', 'color': '#888'})
-    except Exception as e:
-        print(f"Error filtering exercise log: {e}")
-        return dash.no_update
+    # Store original data on first load
+    if not hasattr(filter_exercise_log, 'original_data'):
+        filter_exercise_log.original_data = full_data
+    
+    # Filter based on selected type
+    if selected_type == 'All':
+        return filter_exercise_log.original_data
+    else:
+        filtered_data = [row for row in filter_exercise_log.original_data if row.get('Activity') == selected_type]
+        return filtered_data if filtered_data else filter_exercise_log.original_data
 
 
 def seconds_to_tick_label(seconds):
@@ -3440,12 +3427,15 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     if exercise_data:
         exercise_df = pd.DataFrame(exercise_data)
         exercise_log_table = dash_table.DataTable(
-            exercise_df.to_dict('records'), 
-            [{"name": i, "id": i} for i in exercise_df.columns], 
+            id='exercise-data-table',
+            data=exercise_df.to_dict('records'), 
+            columns=[{"name": i, "id": i} for i in exercise_df.columns], 
             style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], 
             style_header={'backgroundColor': '#336699','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, 
             style_cell={'textAlign': 'center'},
-            page_size=20
+            page_size=20,
+            export_format='csv',  # Enable CSV export
+            export_headers='display'
         )
     else:
         exercise_df = pd.DataFrame()
@@ -3590,11 +3580,21 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     # Sleep Stages Pie Chart
     if sum(sleep_stages_totals.values()) > 0:
         stages_df = pd.DataFrame([{'Stage': k, 'Minutes': v} for k, v in sleep_stages_totals.items() if v > 0])
+        
+        # Add formatted duration column for hover
+        stages_df['Duration'] = stages_df['Minutes'].apply(lambda x: f"{x // 60}h {x % 60}m")
+        
         fig_sleep_stages_pie = px.pie(stages_df, values='Minutes', names='Stage',
                                        title='Average Sleep Stage Distribution',
                                        color='Stage',
                                        color_discrete_map={'Deep': '#084466', 'Light': '#1e9ad6', 
-                                                          'REM': '#4cc5da', 'Wake': '#fd7676'})
+                                                          'REM': '#4cc5da', 'Wake': '#fd7676'},
+                                       hover_data={'Minutes': False, 'Duration': True})
+        
+        # Custom hover template
+        fig_sleep_stages_pie.update_traces(
+            hovertemplate='<b>%{label}</b><br>Duration: %{customdata[0]}<br>%{percent}<extra></extra>'
+        )
     else:
         fig_sleep_stages_pie = px.pie(title='Sleep Stages (No Data)')
     
