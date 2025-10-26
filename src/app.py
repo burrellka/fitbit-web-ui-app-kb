@@ -3595,11 +3595,11 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                                        title='Average Sleep Stage Distribution',
                                        color='Stage',
                                        color_discrete_map={'Deep': '#084466', 'Light': '#1e9ad6', 
-                                                          'REM': '#4cc5da', 'Wake': '#fd7676'},
-                                       hover_data={'Minutes': False, 'Duration': True})
+                                                          'REM': '#4cc5da', 'Wake': '#fd7676'})
         
-        # Custom hover template
+        # Custom hover template with formatted duration
         fig_sleep_stages_pie.update_traces(
+            customdata=stages_df[['Duration']].values,
             hovertemplate='<b>%{label}</b><br>Duration: %{customdata[0]}<br>%{percent}<extra></extra>'
         )
     else:
