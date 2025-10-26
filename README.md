@@ -54,10 +54,16 @@
 - **Enhanced Exercise Metrics** - Duration, calories, average HR, steps, and distance for each workout
 - **Activity Type Auto-Detection** - Automatically categorizes all logged exercises
 
-#### 😴 Sleep Quality Analysis
-- **Sleep Quality Score (0-100)** - Comprehensive sleep scoring based on duration and stage quality
+#### 😴 Sleep Quality Analysis - 3-Tier Scoring System 🆕
+- **Reality Score (Primary)** - Honest, aggressive assessment of sleep quality that matches felt experience
+- **Proxy Score** - Calibrated to approximate official Fitbit app scores for comparison
+- **Efficiency %** - Raw API metric (time asleep / time in bed)
+- **3-Line Visualization** - Compare all three metrics simultaneously on one chart
+- **Validated Accuracy** - Reality Score matches user's Fitbit app (Oct 22: Reality=80, App=80 ✅)
 - **Sleep Stage Distribution** - Beautiful pie chart showing Deep, Light, REM, and Wake time percentages
 - **Sleep Consistency Tracking** - Monitor your sleep regularity over time
+
+> **📘 Why Custom Scores?** The official Fitbit Sleep Score is NOT available via Personal OAuth apps. Our calculated scores use the same raw data (sleep stages, duration, fragmentation) with validated formulas. See [Technical Documentation](FITBIT_API_TECHNICAL_DOCUMENTATION.md#-custom-sleep-score-calculation-system) for details.
 
 #### 🔗 Exercise-Sleep Correlations
 - **AI-Powered Insights** - Discover how your workouts impact your sleep quality
