@@ -2555,21 +2555,12 @@ def disable_button_and_calculate(n_clicks, oauth_token, refresh_token, token_exp
             else:
                 print("❌ Token refresh failed!")
     
-    headers = {
-        "Authorization": "Bearer " + oauth_token,
-        "Accept": "application/json"
-    }
-    try:
-        print("🔍 Validating token with profile API...")
-        token_response = requests.get("https://api.fitbit.com/1/user/-/profile.json", headers=headers, timeout=10)
-        print(f"🔍 Validation response status: {token_response.status_code}")
-        if token_response.status_code != 200:
-            print(f"❌ Validation failed! Response: {token_response.text[:200]}")
-        token_response.raise_for_status()
-        print("✅ Token validation successful!")
-    except Exception as e:
-        print(f"❌ Token validation exception: {type(e).__name__}: {str(e)}")
-        return True, False, False
+    # 🐞 FIX: Removed redundant token validation API call
+    # Token validation is already handled in update_output function
+    # This redundant call was consuming API budget and causing 429 errors
+    # The cache-first approach in update_output handles token issues gracefully
+    
+    print("✅ Token present and ready (validation happens in report generation)")
     return False, True, True
 
 # Fetch data and update graphs on click of submit
