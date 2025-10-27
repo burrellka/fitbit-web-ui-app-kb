@@ -320,7 +320,7 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
     return cached_count
 
 
-def background_cache_builder(access_token: str):
+def background_cache_builder(access_token: str, refresh_token: str = None):
     """
     PHASED BACKGROUND CACHE BUILDER
     
@@ -355,12 +355,32 @@ def background_cache_builder(access_token: str):
     print("🚀 Starting PHASED background cache builder...")
     print("📊 Strategy: Range endpoints → 30-day blocks → 7-day blocks (loop until 150/hour limit)")
     
+    # 🐞 FIX: Track current tokens (they will be refreshed in the loop)
+    current_access_token = access_token
+    current_refresh_token = refresh_token
+    
     try:
         while cache_builder_running:
             api_calls_this_hour = 0
             MAX_CALLS_PER_HOUR = 145  # Conservative limit (leave 5 for user reports)
             
-            headers = {"Authorization": f"Bearer {access_token}"}
+            # 🐞 FIX: Refresh token at the start of each hourly cycle
+            if current_refresh_token:
+                print("\n🔄 Refreshing access token for new hourly cycle...")
+                try:
+                    new_access, new_refresh, new_expiry = refresh_access_token(current_refresh_token)
+                    if new_access:
+                        current_access_token = new_access
+                        current_refresh_token = new_refresh
+                        print(f"✅ Token refreshed! Valid for 8 hours (expires at {datetime.fromtimestamp(new_expiry).strftime('%H:%M:%S')})")
+                    else:
+                        print("⚠️ Token refresh failed, using existing token")
+                except Exception as e:
+                    print(f"⚠️ Error refreshing token: {e}, using existing token")
+            else:
+                print("⚠️ No refresh token available - token will expire after 8 hours")
+            
+            headers = {"Authorization": f"Bearer {current_access_token}"}
             today = datetime.now().strftime('%Y-%m-%d')
             yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
             
@@ -1693,8 +1713,13 @@ def logout_callback(n_clicks):
         return None, None, None, '/logout'
     return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-@app.callback(Output('login-button', 'children'),Output('login-button', 'disabled'),Input('oauth-token', 'data'))
-def update_login_button(oauth_token):
+@app.callback(
+    Output('login-button', 'children'),
+    Output('login-button', 'disabled'),
+    Input('oauth-token', 'data'),
+    Input('refresh-token', 'data')
+)
+def update_login_button(oauth_token, refresh_token):
     if oauth_token:
         # Start background cache builder if not already running
         global cache_builder_thread, cache_builder_running, auto_sync_thread, auto_sync_running
@@ -1702,7 +1727,7 @@ def update_login_button(oauth_token):
             print("🚀 Launching background cache builder...")
             cache_builder_thread = threading.Thread(
                 target=background_cache_builder, 
-                args=(oauth_token,),
+                args=(oauth_token, refresh_token),  # 🐞 FIX: Pass refresh_token for token refresh
                 daemon=True
             )
             cache_builder_thread.start()
@@ -1881,8 +1906,12 @@ def start_cache_builder_handler(n_clicks, oauth_token):
             return True, "⚠️ Cache builder is already running!"
         
         try:
+            # 🐞 FIX: Pass both access_token AND refresh_token so builder can refresh tokens
+            # Get refresh token from session
+            refresh_token = session.get('refresh_token')
+            
             # Launch background cache builder thread
-            cache_builder_thread = threading.Thread(target=background_cache_builder, args=(oauth_token,), daemon=True)
+            cache_builder_thread = threading.Thread(target=background_cache_builder, args=(oauth_token, refresh_token), daemon=True)
             cache_builder_thread.start()
             return True, "🚀 Cache builder started! It will run in the background and populate historical data. Check cache status below for progress."
         except Exception as e:
