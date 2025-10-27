@@ -18,6 +18,7 @@ import threading
 import time
 from flask import jsonify, request, session, redirect as flask_redirect
 from functools import wraps
+import json
 
 
 # %%
@@ -1342,6 +1343,7 @@ app.layout = html.Div(children=[
     dcc.Store(id="oauth-token", storage_type='session'),  # Store OAuth token in session storage
     dcc.Store(id="refresh-token", storage_type='session'),  # Store refresh token in session storage
     dcc.Store(id="token-expiry", storage_type='session'),  # Store token expiry time
+    dcc.Store(id='exercise-data-store-json'), # 🐞 FIX: Use dcc.Store instead of global variable for workout details
     html.Div(id="instruction-area", className="hidden-print", style={'margin-top':'30px', 'margin-right':'auto', 'margin-left':'auto','text-align':'center'}, children=[
         html.P("Select a date range to generate a report.", style={'font-size':'17px', 'font-weight': 'bold', 'color':'#54565e'}),
         html.Div(id="cache-status-display", style={'margin-top': '10px', 'padding': '10px', 'background-color': '#f0f8ff', 'border-radius': '5px', 'font-size': '14px'}),
@@ -1721,26 +1723,10 @@ def logout_callback(n_clicks):
 )
 def update_login_button(oauth_token, refresh_token):
     if oauth_token:
-        # Start background cache builder if not already running
-        global cache_builder_thread, cache_builder_running, auto_sync_thread, auto_sync_running
-        if not cache_builder_running and (cache_builder_thread is None or not cache_builder_thread.is_alive()):
-            print("🚀 Launching background cache builder...")
-            cache_builder_thread = threading.Thread(
-                target=background_cache_builder, 
-                args=(oauth_token, refresh_token),  # 🐞 FIX: Pass refresh_token for token refresh
-                daemon=True
-            )
-            cache_builder_thread.start()
-        
-        # Start automatic daily sync if not already running
-        if not auto_sync_running and (auto_sync_thread is None or not auto_sync_thread.is_alive()):
-            print("🤖 Launching automatic daily sync...")
-            auto_sync_thread = threading.Thread(
-                target=automatic_daily_sync,
-                daemon=True
-            )
-            auto_sync_thread.start()
-        
+        # 🐞 FIX: Do NOT auto-start cache builder on login
+        # User must manually click "Start Cache" button to begin caching
+        # This allows for logout/flush cache without unwanted auto-restarts
+        print("✅ Logged in - cache builder will start when 'Start Cache' button is clicked")
         return html.Span("Logged in"), True
     else:
         return "Login to FitBit", False
@@ -1884,11 +1870,19 @@ def update_cache_status(n):
 
 @app.callback(Output('flush-confirm', 'displayed'), Output('flush-confirm', 'message'), Input('flush-cache-button-header', 'n_clicks'))
 def flush_cache_handler(n_clicks):
-    """Handle cache flush button click"""
+    """Handle cache flush button click - also STOPS cache builder"""
+    global cache_builder_running
+    
     if n_clicks and n_clicks > 0:
         try:
+            # 🐞 FIX: Stop cache builder when flushing cache
+            if cache_builder_running:
+                print("🛑 Stopping cache builder due to cache flush...")
+                cache_builder_running = False
+                print("✅ Cache builder stopped")
+            
             cache.flush_cache()
-            return True, "✅ Cache flushed successfully! Your login is preserved. Generate a new report to rebuild cache."
+            return True, "✅ Cache flushed successfully! Cache builder stopped. Click 'Start Cache' to rebuild."
         except Exception as e:
             return True, f"❌ Error flushing cache: {e}"
     return False, ""
@@ -1925,14 +1919,16 @@ sleep_detail_data_store = {}
 @app.callback(
     Output('workout-detail-display', 'children'),
     Input('workout-date-selector', 'value'),
+    State('exercise-data-store-json', 'data'), # Read from the dcc.Store
     State('oauth-token', 'data')
 )
-def display_workout_details(selected_date, oauth_token):
+def display_workout_details(selected_date, exercise_data_json, oauth_token):
     """Display detailed workout information including HR zones for selected date"""
-    if not selected_date or not oauth_token:
+    if not selected_date or not oauth_token or not exercise_data_json:
         return html.Div("Select a workout date to view details", style={'color': '#999', 'font-style': 'italic'})
     
-    # Get stored activity data for the date
+    # Get stored activity data for the date from the JSON store
+    exercise_data_store = json.loads(exercise_data_json)
     if selected_date not in exercise_data_store:
         return html.Div(f"No workout data available for {selected_date}", style={'color': '#999'})
     
@@ -2759,14 +2755,14 @@ def disable_button_and_calculate(n_clicks, oauth_token, refresh_token, token_exp
 
 # Fetch data and update graphs on click of submit
 @app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_eov', 'figure'), Output('eov_table', 'children'), Output('graph_sleep', 'figure'), Output('sleep_data_table', 'children'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise-type-filter', 'options'), Output('exercise_log_table', 'children'), Output('workout-date-selector', 'options'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('sleep-date-selector', 'options'), Output('graph_exercise_sleep_correlation', 'figure'), Output('graph_azm_sleep_correlation', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
-Input('submit-button', 'disabled'),
+Input('submit-button', 'n_clicks'),
 State('my-date-picker-range', 'start_date'), State('my-date-picker-range', 'end_date'), State('oauth-token', 'data'),
 prevent_initial_call=True)
 def update_output(n_clicks, start_date, end_date, oauth_token):
-    # 🐞 FIX #2: Clear global stores to prevent stale data pollution
-    global exercise_data_store, sleep_detail_data_store
-    exercise_data_store.clear()
-    sleep_detail_data_store.clear()
+    # 🐞 FIX: Removed fragile global variables and clear() calls.
+    # global exercise_data_store, sleep_detail_data_store
+    # exercise_data_store.clear()
+    # sleep_detail_data_store.clear()
     
     # Advanced metrics now always enabled with smart caching!
     advanced_metrics_enabled = ['advanced']  # Always enabled
@@ -3144,42 +3140,45 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     else:
         print("ℹ️ Advanced metrics disabled - skipping HRV, Breathing Rate, and Temperature to conserve API calls")
     
-    # Cardio Fitness - Fetch in 30-day chunks (API limitation)
-    response_cardio_fitness = {"cardioScore": []}
-    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-    current_dt = start_dt
-    while current_dt <= end_dt:
-        chunk_end = min(current_dt + timedelta(days=29), end_dt)
+    # 🐞 FIX: Only fetch from API if NOT using 100% cached data
+    if not (all_cached and not refresh_today):
+        # Cardio Fitness - Fetch in 30-day chunks (API limitation)
+        response_cardio_fitness = {"cardioScore": []}
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        current_dt = start_dt
+        while current_dt <= end_dt:
+            chunk_end = min(current_dt + timedelta(days=29), end_dt)
+            try:
+                cf_chunk = requests.get(f"https://api.fitbit.com/1/user/-/cardioscore/date/{current_dt.strftime('%Y-%m-%d')}/{chunk_end.strftime('%Y-%m-%d')}.json", headers=headers).json()
+                if "cardioScore" in cf_chunk:
+                    response_cardio_fitness["cardioScore"].extend(cf_chunk["cardioScore"])
+            except:
+                pass
+            current_dt = chunk_end + timedelta(days=1)
+        print(f"Cardio Fitness API Response: Fetched {len(response_cardio_fitness.get('cardioScore', []))} days of data")
         try:
-            cf_chunk = requests.get(f"https://api.fitbit.com/1/user/-/cardioscore/date/{current_dt.strftime('%Y-%m-%d')}/{chunk_end.strftime('%Y-%m-%d')}.json", headers=headers).json()
-            if "cardioScore" in cf_chunk:
-                response_cardio_fitness["cardioScore"].extend(cf_chunk["cardioScore"])
+            response_calories = requests.get("https://api.fitbit.com/1/user/-/activities/calories/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
         except:
-            pass
-        current_dt = chunk_end + timedelta(days=1)
-    print(f"Cardio Fitness API Response: Fetched {len(response_cardio_fitness.get('cardioScore', []))} days of data")
-    try:
-        response_calories = requests.get("https://api.fitbit.com/1/user/-/activities/calories/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    except:
-        response_calories = {}
-    try:
-        response_distance = requests.get("https://api.fitbit.com/1/user/-/activities/distance/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    except:
-        response_distance = {}
-    try:
-        response_floors = requests.get("https://api.fitbit.com/1/user/-/activities/floors/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    except:
-        response_floors = {}
-    try:
-        response_azm = requests.get("https://api.fitbit.com/1/user/-/activities/active-zone-minutes/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-    except:
-        response_azm = {}
-    try:
-        # 🐞 FIX: Fitbit API only accepts ONE date parameter (beforeDate OR afterDate, not both)
-        response_activities = requests.get("https://api.fitbit.com/1/user/-/activities/list.json?beforeDate="+ end_date +"&sort=asc&offset=0&limit=100", headers=headers).json()
-    except:
-        response_activities = {}
+            response_calories = {}
+        try:
+            response_distance = requests.get("https://api.fitbit.com/1/user/-/activities/distance/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        except:
+            response_distance = {}
+        try:
+            response_floors = requests.get("https://api.fitbit.com/1/user/-/activities/floors/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        except:
+            response_floors = {}
+        try:
+            response_azm = requests.get("https://api.fitbit.com/1/user/-/activities/active-zone-minutes/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
+        except:
+            response_azm = {}
+        try:
+            # 🐞 FIX: Fitbit API only accepts ONE date parameter (beforeDate OR afterDate, not both)
+            response_activities = requests.get("https://api.fitbit.com/1/user/-/activities/list.json?beforeDate="+ end_date +"&sort=asc&offset=0&limit=100", headers=headers).json()
+        except:
+            response_activities = {}
+    # else: The necessary response objects (like response_activities) are already populated from the cache path
 
     # Processing data-----------------------------------------------------------------------------------------------------------------------
     days_name_list = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday','Sunday')
@@ -4281,7 +4280,10 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     else:
         fig_azm_sleep_correlation = px.scatter(title='AZM-Sleep Correlation (Insufficient Data)')
     
-    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_spo2, spo2_summary_table, fig_eov, eov_summary_table, fig_sleep_minutes, sleep_data_table_output, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_filter_options, exercise_log_table, workout_dates_for_dropdown, fig_sleep_score, fig_sleep_stages_pie, sleep_dates_for_dropdown, fig_correlation, fig_azm_sleep_correlation, correlation_insights, ""
+    # 🐞 FIX: Serialize the collected activity data to JSON for the dcc.Store
+    exercise_data_json = json.dumps(activities_by_date)
+
+    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_spo2, spo2_summary_table, fig_eov, eov_summary_table, fig_sleep_minutes, sleep_data_table_output, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_filter_options, exercise_log_table, workout_dates_for_dropdown, fig_sleep_score, fig_sleep_stages_pie, sleep_dates_for_dropdown, fig_correlation, fig_azm_sleep_correlation, correlation_insights, "", exercise_data_json
 
 # ========================================
 # REST API Endpoints for MCP Server Integration

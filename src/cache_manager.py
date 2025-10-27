@@ -234,15 +234,24 @@ class FitbitCache:
     
     def set_advanced_metrics(self, date: str, hrv: float = None, 
                            breathing_rate: float = None, temperature: float = None):
-        """Cache advanced metrics for a specific date"""
+        """
+        Sets (UPSERTS) advanced metrics for a specific date, preserving other data.
+        """
         with self.lock:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute('''
-                INSERT OR REPLACE INTO advanced_metrics_cache 
-                (date, hrv, breathing_rate, temperature, last_updated)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ''', (date, hrv, breathing_rate, temperature))
+            
+            # Using COALESCE on the UPDATE ensures we don't overwrite existing data with NULLs
+            sql = f"""
+                INSERT INTO advanced_metrics_cache (date, hrv, breathing_rate, temperature)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(date) DO UPDATE SET
+                    hrv = COALESCE(excluded.hrv, advanced_metrics_cache.hrv),
+                    breathing_rate = COALESCE(excluded.breathing_rate, advanced_metrics_cache.breathing_rate),
+                    temperature = COALESCE(excluded.temperature, advanced_metrics_cache.temperature);
+            """
+            
+            cursor.execute(sql, (date, hrv, breathing_rate, temperature))
             conn.commit()
             conn.close()
     
@@ -433,17 +442,53 @@ class FitbitCache:
                          weight: float = None, spo2: float = None, eov: float = None, calories: int = None,
                          distance: float = None, floors: int = None, active_zone_minutes: int = None,
                          fat_burn_minutes: int = None, cardio_minutes: int = None, peak_minutes: int = None):
-        """Cache daily metrics for a specific date (🐞 FIX: Added EOV support)"""
+        """
+        Sets (UPSERTS) daily metrics for a specific date, preserving other data.
+        """
         with self.lock:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute('''
-                INSERT OR REPLACE INTO daily_metrics_cache 
-                (date, resting_heart_rate, steps, weight, spo2, eov, calories, distance, floors,
-                 active_zone_minutes, fat_burn_minutes, cardio_minutes, peak_minutes)
+            
+            # Dynamically build the SET clauses for the UPDATE part of the UPSERT
+            set_clauses = []
+            params = {'date': date}
+            if resting_heart_rate is not None: set_clauses.append("resting_heart_rate = excluded.resting_heart_rate")
+            if fat_burn_minutes is not None: set_clauses.append("fat_burn_minutes = excluded.fat_burn_minutes")
+            if cardio_minutes is not None: set_clauses.append("cardio_minutes = excluded.cardio_minutes")
+            if peak_minutes is not None: set_clauses.append("peak_minutes = excluded.peak_minutes")
+            if steps is not None: set_clauses.append("steps = excluded.steps")
+            if weight is not None: set_clauses.append("weight = excluded.weight")
+            if spo2 is not None: set_clauses.append("spo2 = excluded.spo2")
+            if eov is not None: set_clauses.append("eov = excluded.eov")
+            if calories is not None: set_clauses.append("calories = excluded.calories")
+            if distance is not None: set_clauses.append("distance = excluded.distance")
+            if floors is not None: set_clauses.append("floors = excluded.floors")
+            if active_zone_minutes is not None: set_clauses.append("active_zone_minutes = excluded.active_zone_minutes")
+
+            if not set_clauses: # Nothing to update
+                return
+            
+            # Using COALESCE on the UPDATE ensures we don't overwrite existing data with NULLs
+            # For example, if we only provide 'steps', 'rhr' will be preserved if it already exists.
+            sql = f"""
+                INSERT INTO daily_metrics_cache (date, resting_heart_rate, fat_burn_minutes, cardio_minutes, peak_minutes, steps, weight, spo2, eov, calories, distance, floors, active_zone_minutes)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (date, resting_heart_rate, steps, weight, spo2, eov, calories, distance, floors,
-                  active_zone_minutes, fat_burn_minutes, cardio_minutes, peak_minutes))
+                ON CONFLICT(date) DO UPDATE SET
+                    resting_heart_rate = COALESCE(excluded.resting_heart_rate, daily_metrics_cache.resting_heart_rate),
+                    fat_burn_minutes = COALESCE(excluded.fat_burn_minutes, daily_metrics_cache.fat_burn_minutes),
+                    cardio_minutes = COALESCE(excluded.cardio_minutes, daily_metrics_cache.cardio_minutes),
+                    peak_minutes = COALESCE(excluded.peak_minutes, daily_metrics_cache.peak_minutes),
+                    steps = COALESCE(excluded.steps, daily_metrics_cache.steps),
+                    weight = COALESCE(excluded.weight, daily_metrics_cache.weight),
+                    spo2 = COALESCE(excluded.spo2, daily_metrics_cache.spo2),
+                    eov = COALESCE(excluded.eov, daily_metrics_cache.eov),
+                    calories = COALESCE(excluded.calories, daily_metrics_cache.calories),
+                    distance = COALESCE(excluded.distance, daily_metrics_cache.distance),
+                    floors = COALESCE(excluded.floors, daily_metrics_cache.floors),
+                    active_zone_minutes = COALESCE(excluded.active_zone_minutes, daily_metrics_cache.active_zone_minutes);
+            """
+            
+            cursor.execute(sql, (date, resting_heart_rate, fat_burn_minutes, cardio_minutes, peak_minutes, steps, weight, spo2, eov, calories, distance, floors, active_zone_minutes))
             conn.commit()
             conn.close()
     
