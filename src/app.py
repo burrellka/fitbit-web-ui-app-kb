@@ -399,10 +399,6 @@ def background_cache_builder(access_token: str):
             phase1_calls = 0
             rate_limit_hit = False  # Flag to track if we hit rate limit
             
-            # 🐞 FIX: Activities API has a shorter max range (31 days per Fitbit docs)
-            # Use last 90 days for activities instead of 365
-            activities_start = (end_date - timedelta(days=90)).strftime('%Y-%m-%d')
-            
             # These endpoints support date ranges - very efficient!
             range_endpoints = [
                 ("Heart Rate", f"https://api.fitbit.com/1/user/-/activities/heart/date/{start_date_str}/{end_date_str}.json"),
@@ -413,7 +409,7 @@ def background_cache_builder(access_token: str):
                 ("Distance", f"https://api.fitbit.com/1/user/-/activities/distance/date/{start_date_str}/{end_date_str}.json"),
                 ("Floors", f"https://api.fitbit.com/1/user/-/activities/floors/date/{start_date_str}/{end_date_str}.json"),
                 ("Active Zone Minutes", f"https://api.fitbit.com/1/user/-/activities/active-zone-minutes/date/{start_date_str}/{end_date_str}.json"),
-                ("Activities", f"https://api.fitbit.com/1/user/-/activities/list.json?beforeDate={end_date_str}&afterDate={activities_start}&sort=asc&offset=0&limit=100"),
+                ("Activities", f"https://api.fitbit.com/1/user/-/activities/list.json?beforeDate={end_date_str}&afterDate={start_date_str}&sort=asc&offset=0&limit=100"),
             ]
             
             for metric_name, endpoint in range_endpoints:
