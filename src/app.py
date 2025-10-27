@@ -468,9 +468,39 @@ def background_cache_builder(access_token: str):
                         elif metric_name == "Active Zone Minutes":
                             cached = process_and_cache_daily_metrics(dates_str_list, 'azm', response_data, cache)
                         elif metric_name == "Activities":
-                            # Activities need special handling
-                            activities_list = response_data.get('activities', [])
-                            for activity in activities_list:
+                            # Activities need special handling with pagination (API returns max 100 per call)
+                            # Keep fetching until we get fewer than 100 activities or hit API limit
+                            all_activities = response_data.get('activities', [])
+                            offset = 100  # Already got first 100
+                            
+                            # Paginate through all activities
+                            while len(response_data.get('activities', [])) == 100 and api_calls_this_hour < MAX_CALLS_PER_HOUR:
+                                try:
+                                    print(f" → Fetching more (offset={offset})...", end="")
+                                    paginated_url = f"https://api.fitbit.com/1/user/-/activities/list.json?beforeDate={end_date_str}&sort=asc&offset={offset}&limit=100"
+                                    paginated_response = requests.get(paginated_url, headers=headers, timeout=15)
+                                    
+                                    if paginated_response.status_code == 429:
+                                        print(" ❌ Rate limit")
+                                        rate_limit_hit = True
+                                        break
+                                    
+                                    if paginated_response.status_code == 200:
+                                        api_calls_this_hour += 1
+                                        phase1_calls += 1
+                                        response_data = paginated_response.json()
+                                        batch_activities = response_data.get('activities', [])
+                                        all_activities.extend(batch_activities)
+                                        offset += 100
+                                        print(f" +{len(batch_activities)}", end="")
+                                    else:
+                                        break
+                                except Exception as e:
+                                    print(f" ⚠️ {e}")
+                                    break
+                            
+                            # Now cache all activities
+                            for activity in all_activities:
                                 try:
                                     activity_date = datetime.strptime(activity['startTime'][:10], '%Y-%m-%d').strftime("%Y-%m-%d")
                                     activity_id = str(activity.get('logId', f"{activity_date}_{activity.get('activityName', 'activity')}"))
