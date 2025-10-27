@@ -409,7 +409,9 @@ def background_cache_builder(access_token: str):
                 ("Distance", f"https://api.fitbit.com/1/user/-/activities/distance/date/{start_date_str}/{end_date_str}.json"),
                 ("Floors", f"https://api.fitbit.com/1/user/-/activities/floors/date/{start_date_str}/{end_date_str}.json"),
                 ("Active Zone Minutes", f"https://api.fitbit.com/1/user/-/activities/active-zone-minutes/date/{start_date_str}/{end_date_str}.json"),
-                ("Activities", f"https://api.fitbit.com/1/user/-/activities/list.json?beforeDate={end_date_str}&afterDate={start_date_str}&sort=asc&offset=0&limit=100"),
+                # 🐞 FIX: Fitbit API only accepts ONE date parameter (beforeDate OR afterDate, not both)
+                # Using only beforeDate returns activities backward from that date
+                ("Activities", f"https://api.fitbit.com/1/user/-/activities/list.json?beforeDate={end_date_str}&sort=asc&offset=0&limit=100"),
             ]
             
             for metric_name, endpoint in range_endpoints:
@@ -3115,7 +3117,8 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     except:
         response_azm = {}
     try:
-        response_activities = requests.get("https://api.fitbit.com/1/user/-/activities/list.json?beforeDate="+ end_date +"&afterDate="+ start_date +"&sort=asc&offset=0&limit=100", headers=headers).json()
+        # 🐞 FIX: Fitbit API only accepts ONE date parameter (beforeDate OR afterDate, not both)
+        response_activities = requests.get("https://api.fitbit.com/1/user/-/activities/list.json?beforeDate="+ end_date +"&sort=asc&offset=0&limit=100", headers=headers).json()
     except:
         response_activities = {}
 
@@ -4359,8 +4362,9 @@ def api_get_exercise(date):
         # Fetch activities for the date (🐞 FIX: Add beforeDate to ensure correct range)
         from datetime import datetime, timedelta
         next_day = (datetime.strptime(date, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+        # 🐞 FIX: Fitbit API only accepts ONE date parameter (beforeDate OR afterDate, not both)
         activities_response = requests.get(
-            f"https://api.fitbit.com/1/user/-/activities/list.json?beforeDate={next_day}&afterDate={date}&sort=asc&offset=0&limit=100",
+            f"https://api.fitbit.com/1/user/-/activities/list.json?beforeDate={next_day}&sort=asc&offset=0&limit=100",
             headers=headers,
             timeout=10
         ).json()
