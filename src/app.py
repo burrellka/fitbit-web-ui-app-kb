@@ -189,8 +189,12 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
                 try:
                     cache_manager.set_daily_metrics(date=date_str, steps=steps_value)
                     cached_count += 1
-                except:
+                except Exception as e:
+                    print(f"❌ Error caching steps for {date_str}: {e}")
                     pass
+            else:
+                if date_str in dates_str_list[:3]:  # Only log first 3 to avoid spam
+                    print(f"⚠️ No steps data for {date_str}")
     
     elif metric_type == 'calories':
         calories_lookup = {}
