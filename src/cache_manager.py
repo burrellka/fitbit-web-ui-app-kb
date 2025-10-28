@@ -625,8 +625,9 @@ class FitbitCache:
             activities = []
             for row in results:
                 # Parse the JSON string back to dict if it exists
+                import json
                 try:
-                    activity_dict = eval(row[7]) if row[7] else {}
+                    activity_dict = json.loads(row[7]) if row[7] else {}
                 except:
                     activity_dict = {}
                 
