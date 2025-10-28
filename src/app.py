@@ -1838,6 +1838,8 @@ app.layout = html.Div(children=[
                        style={'padding': '10px 20px', 'background-color': '#f39c12', 'color': 'white', 'text-decoration': 'none', 'border-radius': '5px', 'font-weight': 'bold'}),
                 html.A("🔑 Get Access Token", href="https://github.com/burrellka/fitbit-web-ui-app-kb/blob/enhanced-features/help/GET_ACCESS_TOKEN.md", target="_blank",
                        style={'padding': '10px 20px', 'background-color': '#27ae60', 'color': 'white', 'text-decoration': 'none', 'border-radius': '5px', 'font-weight': 'bold'}),
+                html.A("📊 Cache Log Viewer", href="/cache-log", 
+                       style={'padding': '10px 20px', 'background-color': '#8e44ad', 'color': 'white', 'text-decoration': 'none', 'border-radius': '5px', 'font-weight': 'bold'}),
             ]),
             html.Div(style={'text-align': 'center', 'margin-top': '20px', 'color': '#95a5a6', 'font-size': '12px'}, children=[
                 html.P("Fitbit Wellness Enhanced v2.0 | Intelligent Caching & Auto-Sync"),
@@ -4570,6 +4572,468 @@ def api_health():
         'app': 'Fitbit Wellness Enhanced',
         'version': '2.0.0-cache'
     })
+
+# ========================================
+# Cache Log Viewer Page
+# ========================================
+@server.route('/cache-log')
+def cache_log_page():
+    """Cache Log Viewer - Interactive page to view cached data"""
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Cache Log Viewer - Fitbit Wellness</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                padding: 20px;
+            }
+            .container {
+                max-width: 1400px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 15px;
+                padding: 30px;
+                box-shadow: 0 10px 50px rgba(0,0,0,0.2);
+            }
+            h1 {
+                color: #667eea;
+                text-align: center;
+                margin-bottom: 10px;
+                font-size: 2.5em;
+            }
+            .subtitle {
+                text-align: center;
+                color: #666;
+                margin-bottom: 30px;
+                font-size: 1.1em;
+            }
+            .back-link {
+                display: inline-block;
+                margin-bottom: 20px;
+                color: #667eea;
+                text-decoration: none;
+                font-weight: bold;
+                padding: 10px 20px;
+                border: 2px solid #667eea;
+                border-radius: 8px;
+                transition: all 0.3s;
+            }
+            .back-link:hover {
+                background: #667eea;
+                color: white;
+            }
+            .controls {
+                background: #f8f9fa;
+                padding: 25px;
+                border-radius: 10px;
+                margin-bottom: 25px;
+            }
+            .form-group {
+                margin-bottom: 20px;
+            }
+            label {
+                display: block;
+                font-weight: bold;
+                margin-bottom: 8px;
+                color: #333;
+            }
+            input[type="date"] {
+                padding: 10px;
+                border: 2px solid #ddd;
+                border-radius: 6px;
+                font-size: 16px;
+                width: 200px;
+                margin-right: 15px;
+            }
+            input[type="date"]:focus {
+                outline: none;
+                border-color: #667eea;
+            }
+            .metrics-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px;
+                margin-bottom: 20px;
+            }
+            .metric-checkbox {
+                background: white;
+                padding: 12px;
+                border: 2px solid #ddd;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+            .metric-checkbox:hover {
+                border-color: #667eea;
+                background: #f0f4ff;
+            }
+            .metric-checkbox input {
+                margin-right: 8px;
+                cursor: pointer;
+            }
+            .metric-checkbox label {
+                cursor: pointer;
+                margin: 0;
+                font-weight: normal;
+            }
+            button {
+                background: #667eea;
+                color: white;
+                border: none;
+                padding: 12px 30px;
+                border-radius: 8px;
+                font-size: 16px;
+                font-weight: bold;
+                cursor: pointer;
+                margin-right: 10px;
+                transition: all 0.3s;
+            }
+            button:hover {
+                background: #5568d3;
+                transform: translateY(-2px);
+                box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+            }
+            button.secondary {
+                background: #28a745;
+            }
+            button.secondary:hover {
+                background: #218838;
+            }
+            button.tertiary {
+                background: #dc3545;
+            }
+            button.tertiary:hover {
+                background: #c82333;
+            }
+            #output {
+                background: #f8f9fa;
+                border: 2px solid #ddd;
+                border-radius: 10px;
+                padding: 20px;
+                min-height: 400px;
+                font-family: 'Courier New', monospace;
+                font-size: 14px;
+                white-space: pre-wrap;
+                overflow-x: auto;
+                line-height: 1.6;
+            }
+            #output:empty::before {
+                content: 'Select date range and metrics, then click "Generate Report" to view cache data...';
+                color: #999;
+                font-style: italic;
+            }
+            .loading {
+                text-align: center;
+                color: #667eea;
+                font-size: 18px;
+                padding: 40px;
+            }
+            .error {
+                color: #dc3545;
+                font-weight: bold;
+            }
+            .success {
+                color: #28a745;
+                font-weight: bold;
+            }
+            .select-all-container {
+                margin-bottom: 15px;
+                padding: 12px;
+                background: #e3f2fd;
+                border-radius: 8px;
+            }
+            .select-all-container input {
+                margin-right: 8px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <a href="/" class="back-link">← Back to Dashboard</a>
+            
+            <h1>📊 Cache Log Viewer</h1>
+            <p class="subtitle">View and download cached Fitbit data for any date range</p>
+            
+            <div class="controls">
+                <div class="form-group">
+                    <label>📅 Select Date Range:</label>
+                    <input type="date" id="startDate" value="2025-10-20">
+                    <input type="date" id="endDate" value="2025-10-25">
+                </div>
+                
+                <div class="form-group">
+                    <label>🎯 Select Metrics to Display:</label>
+                    
+                    <div class="select-all-container">
+                        <input type="checkbox" id="selectAll" checked>
+                        <label for="selectAll" style="display: inline; font-weight: bold; color: #667eea;">Select All</label>
+                    </div>
+                    
+                    <div class="metrics-grid">
+                        <div class="metric-checkbox">
+                            <input type="checkbox" id="metric_daily" value="daily" checked>
+                            <label for="metric_daily">📊 Daily Metrics (Steps, Calories, etc.)</label>
+                        </div>
+                        <div class="metric-checkbox">
+                            <input type="checkbox" id="metric_sleep" value="sleep" checked>
+                            <label for="metric_sleep">😴 Sleep Data</label>
+                        </div>
+                        <div class="metric-checkbox">
+                            <input type="checkbox" id="metric_advanced" value="advanced" checked>
+                            <label for="metric_advanced">💚 Advanced Metrics (HRV, BR, Temp)</label>
+                        </div>
+                        <div class="metric-checkbox">
+                            <input type="checkbox" id="metric_cardio" value="cardio" checked>
+                            <label for="metric_cardio">🏃 Cardio Fitness (VO2 Max)</label>
+                        </div>
+                        <div class="metric-checkbox">
+                            <input type="checkbox" id="metric_activities" value="activities" checked>
+                            <label for="metric_activities">🏋️ Activities/Exercises</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <button onclick="generateReport()">🔍 Generate Report</button>
+                    <button class="secondary" onclick="downloadReport()">💾 Download as Text</button>
+                    <button class="tertiary" onclick="clearOutput()">🗑️ Clear Output</button>
+                </div>
+            </div>
+            
+            <div id="output"></div>
+        </div>
+        
+        <script>
+            // Select All functionality
+            document.getElementById('selectAll').addEventListener('change', function() {
+                const checkboxes = document.querySelectorAll('.metric-checkbox input[type="checkbox"]');
+                checkboxes.forEach(cb => cb.checked = this.checked);
+            });
+            
+            // Update Select All when individual checkboxes change
+            document.querySelectorAll('.metric-checkbox input[type="checkbox"]').forEach(cb => {
+                cb.addEventListener('change', function() {
+                    const allCheckboxes = document.querySelectorAll('.metric-checkbox input[type="checkbox"]');
+                    const allChecked = Array.from(allCheckboxes).every(checkbox => checkbox.checked);
+                    document.getElementById('selectAll').checked = allChecked;
+                });
+            });
+            
+            async function generateReport() {
+                const startDate = document.getElementById('startDate').value;
+                const endDate = document.getElementById('endDate').value;
+                const output = document.getElementById('output');
+                
+                if (!startDate || !endDate) {
+                    output.innerHTML = '<span class="error">❌ Please select both start and end dates</span>';
+                    return;
+                }
+                
+                // Get selected metrics
+                const metrics = [];
+                document.querySelectorAll('.metric-checkbox input[type="checkbox"]:checked').forEach(cb => {
+                    metrics.push(cb.value);
+                });
+                
+                if (metrics.length === 0) {
+                    output.innerHTML = '<span class="error">❌ Please select at least one metric</span>';
+                    return;
+                }
+                
+                output.innerHTML = '<div class="loading">⏳ Loading cache data...</div>';
+                
+                try {
+                    const response = await fetch(`/api/cache-log?start=${startDate}&end=${endDate}&metrics=${metrics.join(',')}`);
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        output.innerHTML = data.report;
+                    } else {
+                        output.innerHTML = `<span class="error">❌ Error: ${data.error}</span>`;
+                    }
+                } catch (error) {
+                    output.innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+                }
+            }
+            
+            function downloadReport() {
+                const output = document.getElementById('output');
+                if (!output.textContent || output.textContent.includes('Select date range')) {
+                    alert('Please generate a report first!');
+                    return;
+                }
+                
+                const blob = new Blob([output.textContent], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `fitbit-cache-log-${new Date().toISOString().split('T')[0]}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+            
+            function clearOutput() {
+                document.getElementById('output').innerHTML = '';
+            }
+        </script>
+    </body>
+    </html>
+    '''
+
+@server.route('/api/cache-log')
+def api_cache_log():
+    """API endpoint to generate cache log report"""
+    start_date = request.args.get('start')
+    end_date = request.args.get('end')
+    metrics_str = request.args.get('metrics', 'daily,sleep,advanced,cardio,activities')
+    
+    if not start_date or not end_date:
+        return jsonify({'success': False, 'error': 'Missing date parameters'})
+    
+    selected_metrics = set(metrics_str.split(','))
+    
+    try:
+        conn = sqlite3.connect(cache.db_path)
+        cursor = conn.cursor()
+        
+        # Generate date range
+        from datetime import datetime, timedelta
+        start = datetime.strptime(start_date, '%Y-%m-%d')
+        end = datetime.strptime(end_date, '%Y-%m-%d')
+        dates = [(start + timedelta(days=x)).strftime('%Y-%m-%d') 
+                 for x in range((end - start).days + 1)]
+        
+        report_lines = []
+        report_lines.append("=" * 80)
+        report_lines.append(f"FITBIT CACHE REPORT: {start_date} to {end_date}")
+        report_lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        report_lines.append("=" * 80)
+        report_lines.append("")
+        
+        for date in dates:
+            report_lines.append(f"\n📅 {date}")
+            report_lines.append("-" * 80)
+            
+            # Daily Metrics
+            if 'daily' in selected_metrics:
+                cursor.execute('''
+                    SELECT steps, calories, distance, floors, active_zone_minutes,
+                           resting_heart_rate, fat_burn_minutes, cardio_minutes, peak_minutes,
+                           weight, spo2, eov
+                    FROM daily_metrics_cache WHERE date = ?
+                ''', (date,))
+                daily = cursor.fetchone()
+                
+                if daily:
+                    report_lines.append("  📊 Daily Metrics:")
+                    report_lines.append(f"    Steps: {daily[0]}")
+                    report_lines.append(f"    Calories: {daily[1]}")
+                    report_lines.append(f"    Distance: {daily[2]}")
+                    report_lines.append(f"    Floors: {daily[3]}")
+                    report_lines.append(f"    Active Zone Minutes: {daily[4]}")
+                    report_lines.append(f"    Resting Heart Rate: {daily[5]}")
+                    report_lines.append(f"    Fat Burn Minutes: {daily[6]}")
+                    report_lines.append(f"    Cardio Minutes: {daily[7]}")
+                    report_lines.append(f"    Peak Minutes: {daily[8]}")
+                    report_lines.append(f"    Weight: {daily[9]}")
+                    report_lines.append(f"    SpO2: {daily[10]}")
+                    report_lines.append(f"    EOV: {daily[11]}")
+                else:
+                    report_lines.append("  ❌ No daily metrics found")
+            
+            # Sleep Data
+            if 'sleep' in selected_metrics:
+                cursor.execute('''
+                    SELECT reality_score, proxy_score, efficiency, 
+                           deep, light, rem, wake, total_minutes
+                    FROM sleep_cache WHERE date = ?
+                ''', (date,))
+                sleep = cursor.fetchone()
+                
+                if sleep:
+                    report_lines.append("  😴 Sleep Data:")
+                    report_lines.append(f"    Reality Score: {sleep[0]}")
+                    report_lines.append(f"    Proxy Score: {sleep[1]}")
+                    report_lines.append(f"    Efficiency: {sleep[2]}%")
+                    report_lines.append(f"    Deep: {sleep[3]} min")
+                    report_lines.append(f"    Light: {sleep[4]} min")
+                    report_lines.append(f"    REM: {sleep[5]} min")
+                    report_lines.append(f"    Wake: {sleep[6]} min")
+                    report_lines.append(f"    Total: {sleep[7]} min")
+                else:
+                    report_lines.append("  ❌ No sleep data found")
+            
+            # Advanced Metrics
+            if 'advanced' in selected_metrics:
+                cursor.execute('''
+                    SELECT hrv, breathing_rate, temperature
+                    FROM advanced_metrics_cache WHERE date = ?
+                ''', (date,))
+                advanced = cursor.fetchone()
+                
+                if advanced:
+                    report_lines.append("  💚 Advanced Metrics:")
+                    report_lines.append(f"    HRV: {advanced[0]} ms")
+                    report_lines.append(f"    Breathing Rate: {advanced[1]} bpm")
+                    report_lines.append(f"    Temperature: {advanced[2]}°F")
+                else:
+                    report_lines.append("  ❌ No advanced metrics found")
+            
+            # Cardio Fitness
+            if 'cardio' in selected_metrics:
+                cursor.execute('''
+                    SELECT vo2_max FROM cardio_fitness_cache WHERE date = ?
+                ''', (date,))
+                cardio = cursor.fetchone()
+                
+                if cardio and cardio[0]:
+                    report_lines.append("  🏃 Cardio Fitness:")
+                    report_lines.append(f"    VO2 Max: {cardio[0]}")
+                else:
+                    report_lines.append("  ❌ No cardio fitness data found")
+            
+            # Activities
+            if 'activities' in selected_metrics:
+                cursor.execute('''
+                    SELECT activity_name, duration_ms, calories, avg_heart_rate
+                    FROM activities_cache WHERE date = ?
+                ''', (date,))
+                activities = cursor.fetchall()
+                
+                if activities:
+                    report_lines.append(f"  🏋️ Activities ({len(activities)}):")
+                    for act in activities:
+                        duration_min = act[1] // 60000 if act[1] else 0
+                        report_lines.append(f"    - {act[0]}: {duration_min} min, {act[2]} cal, HR: {act[3]}")
+                else:
+                    report_lines.append("  ❌ No activities found")
+        
+        conn.close()
+        
+        report_lines.append("")
+        report_lines.append("=" * 80)
+        report_lines.append("Cache report complete!")
+        report_lines.append("=" * 80)
+        
+        return jsonify({
+            'success': True,
+            'report': '\n'.join(report_lines)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 if __name__ == '__main__':
     app.run_server(debug=True)
