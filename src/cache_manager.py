@@ -270,14 +270,29 @@ class FitbitCache:
                 all_dates.append(current.strftime('%Y-%m-%d'))
                 current += timedelta(days=1)
             
-            # Get dates already in cache
+            # Get dates already in cache (🐞 CRITICAL FIX: Check per-metric, not just existence)
             if metric_type == 'sleep':
                 # Check for reality_score instead of sleep_score (since API doesn't provide sleep_score for Personal apps)
                 cursor.execute('''
                     SELECT date FROM sleep_cache 
                     WHERE date >= ? AND date <= ? AND reality_score IS NOT NULL
                 ''', (start_date, end_date))
-            else:  # advanced_metrics
+            elif metric_type == 'hrv':
+                cursor.execute('''
+                    SELECT date FROM advanced_metrics_cache 
+                    WHERE date >= ? AND date <= ? AND hrv IS NOT NULL
+                ''', (start_date, end_date))
+            elif metric_type == 'breathing_rate':
+                cursor.execute('''
+                    SELECT date FROM advanced_metrics_cache 
+                    WHERE date >= ? AND date <= ? AND breathing_rate IS NOT NULL
+                ''', (start_date, end_date))
+            elif metric_type == 'temperature':
+                cursor.execute('''
+                    SELECT date FROM advanced_metrics_cache 
+                    WHERE date >= ? AND date <= ? AND temperature IS NOT NULL
+                ''', (start_date, end_date))
+            else:  # Default/fallback for backward compatibility
                 cursor.execute('''
                     SELECT date FROM advanced_metrics_cache 
                     WHERE date >= ? AND date <= ?

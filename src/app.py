@@ -911,140 +911,154 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                 if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
                     break
                 
-                # PHASE 3: Daily Endpoints (7-Day Blocks)
-                print(f"\n📍 PHASE 3: Daily Endpoints - 7-Day Blocks (HRV, BR, Temp, Sleep)")
+                # 🐞 CRITICAL FIX: PHASE 3 - Per-Metric Fetching (prevents fragmented cache)
+                # Each metric is now checked and fetched INDEPENDENTLY
+                print(f"\n📍 PHASE 3: Daily Endpoints (Per-Metric)")
                 print("-" * 60)
-                print("💰 Cost: 4 calls/day × 7 days = 28 calls per block")
                 
-                # Find missing dates for daily metrics
-                missing_dates = cache.get_missing_dates(
-                    (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d'),
-                    datetime.now().strftime('%Y-%m-%d'),
-                    metric_type='sleep'
-                )
+                date_range_start = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
+                date_range_end = datetime.now().strftime('%Y-%m-%d')
                 
-                if not missing_dates:
-                    print("✅ All daily metrics fully cached!")
-                    break
+                phase3_metrics_processed = {'sleep': 0, 'hrv': 0, 'br': 0, 'temp': 0}
                 
-                # Process in 7-day blocks, starting from MOST RECENT (work backward)
-                block_size = 7
-                missing_dates_reversed = list(reversed(missing_dates))  # Newest first
-                dates_to_fetch = missing_dates_reversed[:block_size]  # Take most recent 7 days
-                
-                if api_calls_this_hour + (len(dates_to_fetch) * 4) > MAX_CALLS_PER_HOUR:
-                    print(f"⚠️ Not enough budget for 7-day block ({len(dates_to_fetch)*4} calls needed)")
-                    break
-                
-                # Display range in chronological order (even though we fetch newest first)
-                date_range_display = f"{min(dates_to_fetch)} to {max(dates_to_fetch)}" if len(dates_to_fetch) > 1 else dates_to_fetch[0]
-                print(f"📥 Fetching 7-day block: {date_range_display} (newest → oldest)")
-                
-                phase3_success = 0
-                for date_str in dates_to_fetch:
-                    if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
-                        break
-                    
-                    # Fetch all 4 daily metrics for this date
-                    daily_endpoints = [
-                        ("Sleep", f"https://api.fitbit.com/1.2/user/-/sleep/date/{date_str}.json"),
-                        ("HRV", f"https://api.fitbit.com/1/user/-/hrv/date/{date_str}.json"),
-                        ("Breathing", f"https://api.fitbit.com/1/user/-/br/date/{date_str}.json"),
-                        ("Temperature", f"https://api.fitbit.com/1/user/-/temp/skin/date/{date_str}.json"),
-                    ]
-                    
-                    for metric_name, endpoint in daily_endpoints:
-                        if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
-                            break
-                        
-                        try:
-                            response = requests.get(endpoint, headers=headers, timeout=10)
-                            
-                            if response.status_code == 429:
-                                print(f"❌ Rate limit hit at {date_str}")
-                                rate_limit_hit = True
+                # --- 3A: FETCH MISSING SLEEP DATA ---
+                if api_calls_this_hour < MAX_CALLS_PER_HOUR:
+                    missing_sleep = cache.get_missing_dates(date_range_start, date_range_end, metric_type='sleep')
+                    if missing_sleep:
+                        dates_to_fetch = list(reversed(missing_sleep))[:28]  # Fetch 28 newest
+                        print(f"📥 [3A: Sleep] Fetching {len(dates_to_fetch)} missing dates...")
+                        for date_str in dates_to_fetch:
+                            if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
                                 break
-                            
-                            # Only count successful calls
-                            api_calls_this_hour += 1
-                            
-                            if response.status_code == 200:
-                                data = response.json()
-                                
-                                # Cache based on metric type
-                                if metric_name == "Sleep" and 'sleep' in data:
-                                    for sleep_record in data['sleep']:
-                                        if sleep_record.get('isMainSleep', True):
-                                            sleep_score = None
-                                            if 'sleepScore' in sleep_record and isinstance(sleep_record['sleepScore'], dict):
-                                                sleep_score = sleep_record['sleepScore'].get('overall')
-                                            # DO NOT fallback to efficiency - they are different metrics!
-                                            
-                                            # Cache sleep data even if sleep_score is None (stages, duration still valuable!)
-                                            # Calculate 3-tier sleep scores
-                                            minutes_asleep = sleep_record.get('minutesAsleep', 0)
-                                            deep_min = sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes', 0)
-                                            rem_min = sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes', 0)
-                                            minutes_awake = sleep_record.get('minutesAwake', 0)
-                                            
-                                            calculated_scores = calculate_sleep_scores(minutes_asleep, deep_min, rem_min, minutes_awake)
-                                            
-                                            if sleep_score is not None:
-                                                print(f"✅ PHASE 3 - Found REAL sleep score for {date_str}: {sleep_score}")
-                                            else:
-                                                print(f"⚠️ PHASE 3 - No sleep score for {date_str}, but caching stages/duration")
-                                            print(f"   📊 Calculated scores: Reality={calculated_scores['reality_score']}, Proxy={calculated_scores['proxy_score']}, Efficiency={sleep_record.get('efficiency')}")
-                                            
-                                            cache.set_sleep_score(
-                                                date=date_str,
-                                                sleep_score=sleep_score,  # Can be None - that's OK!
-                                                efficiency=sleep_record.get('efficiency'),
-                                                proxy_score=calculated_scores['proxy_score'],
-                                                reality_score=calculated_scores['reality_score'],
-                                                total_sleep=minutes_asleep,
-                                                deep=deep_min,
-                                                light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
-                                                rem=rem_min,
-                                                wake=minutes_awake,
-                                                start_time=sleep_record.get('startTime'),
-                                                sleep_data_json=str(sleep_record)
-                                            )
-                                            break
-                                
-                                elif metric_name == "HRV" and "hrv" in data and len(data["hrv"]) > 0:
-                                    hrv_value = data["hrv"][0]["value"].get("dailyRmssd")
-                                    # 🐞 FIX: Check for None, not truthiness (0 is valid!)
-                                    if hrv_value is not None:
-                                        cache.set_advanced_metrics(date=date_str, hrv=hrv_value)
-                                        print(f"   💾 Cached HRV for {date_str}: {hrv_value}")
-                                    else:
-                                        print(f"   ⚠️ No HRV data for {date_str}")
-                                
-                                elif metric_name == "Breathing" and "br" in data and len(data["br"]) > 0:
-                                    br_value = data["br"][0]["value"].get("breathingRate")
-                                    # 🐞 FIX: Check for None, not truthiness (0 is valid!)
-                                    if br_value is not None:
-                                        cache.set_advanced_metrics(date=date_str, breathing_rate=br_value)
-                                        print(f"   💾 Cached BR for {date_str}: {br_value}")
-                                    else:
-                                        print(f"   ⚠️ No BR data for {date_str}")
-                                
-                                elif metric_name == "Temperature" and "tempSkin" in data and len(data["tempSkin"]) > 0:
-                                    temp_value = data["tempSkin"][0]["value"]
-                                    if isinstance(temp_value, dict):
-                                        temp_value = temp_value.get("nightlyRelative", temp_value.get("value"))
-                                    # Already correct: checks "is not None"
-                                    if temp_value is not None:
-                                        cache.set_advanced_metrics(date=date_str, temperature=temp_value)
-                                
-                                phase3_success += 1
-                                
-                        except Exception as e:
-                            print(f"❌ Error caching {metric_name} for {date_str}: {e}")
-                            import traceback
-                            traceback.print_exc()
+                            try:
+                                response = requests.get(f"https://api.fitbit.com/1.2/user/-/sleep/date/{date_str}.json", headers=headers, timeout=10)
+                                api_calls_this_hour += 1
+                                if response.status_code == 429:
+                                    rate_limit_hit = True
+                                    break
+                                if response.status_code == 200:
+                                    data = response.json()
+                                    if 'sleep' in data:
+                                        for sleep_record in data['sleep']:
+                                            if sleep_record.get('isMainSleep', True):
+                                                sleep_score = None
+                                                if 'sleepScore' in sleep_record and isinstance(sleep_record['sleepScore'], dict):
+                                                    sleep_score = sleep_record['sleepScore'].get('overall')
+                                                minutes_asleep = sleep_record.get('minutesAsleep', 0)
+                                                deep_min = sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes', 0)
+                                                rem_min = sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes', 0)
+                                                minutes_awake = sleep_record.get('minutesAwake', 0)
+                                                calculated_scores = calculate_sleep_scores(minutes_asleep, deep_min, rem_min, minutes_awake)
+                                                cache.set_sleep_score(
+                                                    date=date_str,
+                                                    sleep_score=sleep_score,
+                                                    efficiency=sleep_record.get('efficiency'),
+                                                    proxy_score=calculated_scores['proxy_score'],
+                                                    reality_score=calculated_scores['reality_score'],
+                                                    total_sleep=minutes_asleep,
+                                                    deep=deep_min,
+                                                    light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
+                                                    rem=rem_min,
+                                                    wake=minutes_awake,
+                                                    start_time=sleep_record.get('startTime'),
+                                                    sleep_data_json=str(sleep_record)
+                                                )
+                                                phase3_metrics_processed['sleep'] += 1
+                                                break
+                            except Exception as e:
+                                print(f"❌ Error caching Sleep for {date_str}: {e}")
+                        print(f"✅ [3A: Sleep] Cached {phase3_metrics_processed['sleep']} dates")
+                    else:
+                        print("✅ [3A: Sleep] 100% cached")
                 
-                print(f"✅ Phase 3 Block Complete: {phase3_success} metric-days cached")
+                # --- 3B: FETCH MISSING HRV DATA ---
+                if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
+                    missing_hrv = cache.get_missing_dates(date_range_start, date_range_end, metric_type='hrv')
+                    if missing_hrv:
+                        dates_to_fetch = list(reversed(missing_hrv))[:28]
+                        print(f"📥 [3B: HRV] Fetching {len(dates_to_fetch)} missing dates...")
+                        for date_str in dates_to_fetch:
+                            if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
+                                break
+                            try:
+                                response = requests.get(f"https://api.fitbit.com/1/user/-/hrv/date/{date_str}.json", headers=headers, timeout=10)
+                                api_calls_this_hour += 1
+                                if response.status_code == 429:
+                                    rate_limit_hit = True
+                                    break
+                                if response.status_code == 200:
+                                    data = response.json()
+                                    if "hrv" in data and len(data["hrv"]) > 0:
+                                        hrv_value = data["hrv"][0]["value"].get("dailyRmssd")
+                                        if hrv_value is not None:
+                                            cache.set_advanced_metrics(date=date_str, hrv=hrv_value)
+                                            phase3_metrics_processed['hrv'] += 1
+                            except Exception as e:
+                                print(f"❌ Error caching HRV for {date_str}: {e}")
+                        print(f"✅ [3B: HRV] Cached {phase3_metrics_processed['hrv']} dates")
+                    else:
+                        print("✅ [3B: HRV] 100% cached")
+                
+                # --- 3C: FETCH MISSING BREATHING RATE DATA ---
+                if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
+                    missing_br = cache.get_missing_dates(date_range_start, date_range_end, metric_type='breathing_rate')
+                    if missing_br:
+                        dates_to_fetch = list(reversed(missing_br))[:28]
+                        print(f"📥 [3C: Breathing Rate] Fetching {len(dates_to_fetch)} missing dates...")
+                        for date_str in dates_to_fetch:
+                            if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
+                                break
+                            try:
+                                response = requests.get(f"https://api.fitbit.com/1/user/-/br/date/{date_str}.json", headers=headers, timeout=10)
+                                api_calls_this_hour += 1
+                                if response.status_code == 429:
+                                    rate_limit_hit = True
+                                    break
+                                if response.status_code == 200:
+                                    data = response.json()
+                                    if "br" in data and len(data["br"]) > 0:
+                                        br_value = data["br"][0]["value"].get("breathingRate")
+                                        if br_value is not None:
+                                            cache.set_advanced_metrics(date=date_str, breathing_rate=br_value)
+                                            phase3_metrics_processed['br'] += 1
+                            except Exception as e:
+                                print(f"❌ Error caching BR for {date_str}: {e}")
+                        print(f"✅ [3C: Breathing Rate] Cached {phase3_metrics_processed['br']} dates")
+                    else:
+                        print("✅ [3C: Breathing Rate] 100% cached")
+                
+                # --- 3D: FETCH MISSING TEMPERATURE DATA ---
+                if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
+                    missing_temp = cache.get_missing_dates(date_range_start, date_range_end, metric_type='temperature')
+                    if missing_temp:
+                        dates_to_fetch = list(reversed(missing_temp))[:28]
+                        print(f"📥 [3D: Temperature] Fetching {len(dates_to_fetch)} missing dates...")
+                        for date_str in dates_to_fetch:
+                            if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
+                                break
+                            try:
+                                response = requests.get(f"https://api.fitbit.com/1/user/-/temp/skin/date/{date_str}.json", headers=headers, timeout=10)
+                                api_calls_this_hour += 1
+                                if response.status_code == 429:
+                                    rate_limit_hit = True
+                                    break
+                                if response.status_code == 200:
+                                    data = response.json()
+                                    if "tempSkin" in data and len(data["tempSkin"]) > 0:
+                                        temp_value = data["tempSkin"][0]["value"]
+                                        if isinstance(temp_value, dict):
+                                            temp_value = temp_value.get("nightlyRelative", temp_value.get("value"))
+                                        if temp_value is not None:
+                                            cache.set_advanced_metrics(date=date_str, temperature=temp_value)
+                                            phase3_metrics_processed['temp'] += 1
+                            except Exception as e:
+                                print(f"❌ Error caching Temp for {date_str}: {e}")
+                        print(f"✅ [3D: Temperature] Cached {phase3_metrics_processed['temp']} dates")
+                    else:
+                        print("✅ [3D: Temperature] 100% cached")
+                
+                total_phase3 = sum(phase3_metrics_processed.values())
+                print(f"✅ Phase 3 Complete: {total_phase3} metric-days cached (Sleep={phase3_metrics_processed['sleep']}, HRV={phase3_metrics_processed['hrv']}, BR={phase3_metrics_processed['br']}, Temp={phase3_metrics_processed['temp']})")
                 print(f"📊 API Budget Remaining: {MAX_CALLS_PER_HOUR - api_calls_this_hour}")
                 
                 # Break if rate limit hit
