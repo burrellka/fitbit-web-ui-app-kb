@@ -716,6 +716,54 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
             print(f"✅ Phase 1 Complete: {phase1_calls} API calls")
             print(f"📊 API Budget Remaining: {MAX_CALLS_PER_HOUR - api_calls_this_hour}")
             
+            # 🐞 CRITICAL FIX: Phase 1 Per-Metric Retry (fills gaps from failed/incomplete fetches)
+            if not rate_limit_hit and api_calls_this_hour < MAX_CALLS_PER_HOUR:
+                print("\n📍 PHASE 1 RETRY: Checking for missing Phase 1 metrics...")
+                print("-" * 60)
+                
+                phase1_retry_metrics = [
+                    ('steps', 'Steps', f"https://api.fitbit.com/1/user/-/activities/steps/date/{start_date_str}/{end_date_str}.json"),
+                    ('calories', 'Calories', f"https://api.fitbit.com/1/user/-/activities/calories/date/{start_date_str}/{end_date_str}.json"),
+                    ('distance', 'Distance', f"https://api.fitbit.com/1/user/-/activities/distance/date/{start_date_str}/{end_date_str}.json"),
+                    ('floors', 'Floors', f"https://api.fitbit.com/1/user/-/activities/floors/date/{start_date_str}/{end_date_str}.json"),
+                    ('azm', 'Active Zone Minutes', f"https://api.fitbit.com/1/user/-/activities/active-zone-minutes/date/{start_date_str}/{end_date_str}.json"),
+                    ('heartrate', 'Heart Rate', f"https://api.fitbit.com/1/user/-/activities/heart/date/{start_date_str}/{end_date_str}.json"),
+                    ('weight', 'Weight', f"https://api.fitbit.com/1/user/-/body/weight/date/{start_date_str}/{end_date_str}.json"),
+                    ('spo2', 'SpO2', f"https://api.fitbit.com/1/user/-/spo2/date/{start_date_str}/{end_date_str}.json"),
+                ]
+                
+                for metric_key, metric_name, endpoint in phase1_retry_metrics:
+                    if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
+                        break
+                    
+                    # Check if this metric has missing dates
+                    missing_dates = cache.get_missing_dates(start_date_str, end_date_str, metric_type=metric_key)
+                    if not missing_dates:
+                        print(f"✅ '{metric_name}' is 100% cached.")
+                        continue
+                    
+                    print(f"📥 '{metric_name}' missing {len(missing_dates)} days. Re-fetching...")
+                    try:
+                        response = requests.get(endpoint, headers=headers, timeout=15)
+                        api_calls_this_hour += 1
+                        
+                        if response.status_code == 429:
+                            print(f"❌ Rate limit hit on '{metric_name}' retry")
+                            rate_limit_hit = True
+                            break
+                        
+                        if response.status_code == 200:
+                            response_data = response.json()
+                            cached = process_and_cache_daily_metrics(None, metric_key, response_data, cache)
+                            print(f"  → 💾 Cached {cached} days for '{metric_name}'")
+                        else:
+                            print(f"  ⚠️ Error ({response.status_code})")
+                    except Exception as e:
+                        print(f"❌ Error on '{metric_name}' retry: {e}")
+                
+                print(f"✅ Phase 1 Retry Complete")
+                print(f"📊 API Budget Remaining: {MAX_CALLS_PER_HOUR - api_calls_this_hour}\n")
+            
             # If rate limit hit, stop immediately and wait
             if rate_limit_hit:
                 print("\n" + "="*60)

@@ -271,8 +271,8 @@ class FitbitCache:
                 current += timedelta(days=1)
             
             # Get dates already in cache (🐞 CRITICAL FIX: Check per-metric, not just existence)
+            # Phase 3 (Daily) Metrics
             if metric_type == 'sleep':
-                # Check for reality_score instead of sleep_score (since API doesn't provide sleep_score for Personal apps)
                 cursor.execute('''
                     SELECT date FROM sleep_cache 
                     WHERE date >= ? AND date <= ? AND reality_score IS NOT NULL
@@ -291,6 +291,57 @@ class FitbitCache:
                 cursor.execute('''
                     SELECT date FROM advanced_metrics_cache 
                     WHERE date >= ? AND date <= ? AND temperature IS NOT NULL
+                ''', (start_date, end_date))
+            # Phase 1 (Range) Metrics
+            elif metric_type == 'steps':
+                cursor.execute('''
+                    SELECT date FROM daily_metrics_cache 
+                    WHERE date >= ? AND date <= ? AND steps IS NOT NULL
+                ''', (start_date, end_date))
+            elif metric_type == 'calories':
+                cursor.execute('''
+                    SELECT date FROM daily_metrics_cache 
+                    WHERE date >= ? AND date <= ? AND calories IS NOT NULL
+                ''', (start_date, end_date))
+            elif metric_type == 'distance':
+                cursor.execute('''
+                    SELECT date FROM daily_metrics_cache 
+                    WHERE date >= ? AND date <= ? AND distance IS NOT NULL
+                ''', (start_date, end_date))
+            elif metric_type == 'floors':
+                cursor.execute('''
+                    SELECT date FROM daily_metrics_cache 
+                    WHERE date >= ? AND date <= ? AND floors IS NOT NULL
+                ''', (start_date, end_date))
+            elif metric_type == 'azm':
+                cursor.execute('''
+                    SELECT date FROM daily_metrics_cache 
+                    WHERE date >= ? AND date <= ? AND active_zone_minutes IS NOT NULL
+                ''', (start_date, end_date))
+            elif metric_type == 'heartrate':
+                cursor.execute('''
+                    SELECT date FROM daily_metrics_cache 
+                    WHERE date >= ? AND date <= ? AND resting_heart_rate IS NOT NULL
+                ''', (start_date, end_date))
+            elif metric_type == 'weight':
+                cursor.execute('''
+                    SELECT date FROM daily_metrics_cache 
+                    WHERE date >= ? AND date <= ? AND weight IS NOT NULL
+                ''', (start_date, end_date))
+            elif metric_type == 'spo2':
+                cursor.execute('''
+                    SELECT date FROM daily_metrics_cache 
+                    WHERE date >= ? AND date <= ? AND spo2 IS NOT NULL
+                ''', (start_date, end_date))
+            elif metric_type == 'cardio_fitness':
+                cursor.execute('''
+                    SELECT date FROM cardio_fitness_cache 
+                    WHERE date >= ? AND date <= ? AND vo2_max IS NOT NULL
+                ''', (start_date, end_date))
+            elif metric_type == 'activities':
+                cursor.execute('''
+                    SELECT DISTINCT date FROM activities_cache 
+                    WHERE date >= ? AND date <= ?
                 ''', (start_date, end_date))
             else:  # Default/fallback for backward compatibility
                 cursor.execute('''
