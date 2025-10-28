@@ -4065,7 +4065,6 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     if exercise_data:
         exercise_df = pd.DataFrame(exercise_data)
         exercise_log_table = dash_table.DataTable(
-            id='exercise-data-table',
             data=exercise_df.to_dict('records'), 
             columns=[{"name": i, "id": i} for i in exercise_df.columns], 
             style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], 
