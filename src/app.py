@@ -2858,10 +2858,14 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         
         # Read all daily metrics from cache
         # (Lists already initialized at function level)
+        print(f"📖 Reading {len(dates_str_list)} days from cache...")
         for date_str in dates_str_list:
             daily_metrics = cache.get_daily_metrics(date_str)
             
             if daily_metrics:
+                # 🐞 DEBUG: Show what we're reading from cache
+                print(f"   📅 {date_str}: RHR={daily_metrics.get('resting_heart_rate')}, Steps={daily_metrics.get('steps')}, Calories={daily_metrics.get('calories')}")
+                
                 # Heart rate data
                 rhr_list.append(daily_metrics.get('resting_heart_rate'))
                 fat_burn_minutes_list.append(daily_metrics.get('fat_burn_minutes'))
