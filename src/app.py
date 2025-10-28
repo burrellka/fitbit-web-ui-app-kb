@@ -164,8 +164,8 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
     Used by both background_cache_builder (Phase 1) and update_output (report generation).
     
     Args:
-        dates_str_list: List of date strings (YYYY-MM-DD) - master date list
-        metric_type: One of: 'steps', 'calories', 'distance', 'floors', 'azm'
+        dates_str_list: List of date strings (YYYY-MM-DD) - master date list, or None to extract from response
+        metric_type: One of: 'steps', 'calories', 'distance', 'floors', 'azm', 'heartrate', 'weight', 'spo2'
         response_data: Raw API response JSON
         cache_manager: FitbitCache instance
     
@@ -174,12 +174,20 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
     """
     cached_count = 0
     
+    # 🐞 CRITICAL FIX: If dates_str_list is None, extract dates from API response
+    # This prevents iterating over dates that don't have data, which would skip caching
+    # and cause fragmented data in the database
+    
     if metric_type == 'steps':
         # Create lookup dictionary
         steps_lookup = {entry['dateTime']: int(entry['value']) 
                        for entry in response_data.get('activities-steps', [])}
         
-        # Iterate over master date list
+        # Use dates from API response if no master list provided
+        if dates_str_list is None:
+            dates_str_list = list(steps_lookup.keys())
+        
+        # Iterate over date list
         for date_str in dates_str_list:
             steps_value = steps_lookup.get(date_str)
             if steps_value == 0:
@@ -187,11 +195,19 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             
             if steps_value is not None:
                 try:
+                    print(f"  [CACHE_DEBUG] Caching Steps for {date_str}: Value={steps_value} (Type: {type(steps_value).__name__})")
                     cache_manager.set_daily_metrics(date=date_str, steps=steps_value)
                     cached_count += 1
+                    # Verify immediately
+                    verify_val = cache_manager.get_daily_metrics(date_str)
+                    if verify_val and verify_val.get('steps') == steps_value:
+                        print(f"  ✅ [CACHE_VERIFY] Steps cached successfully for {date_str}")
+                    else:
+                        print(f"  ❌ [CACHE_VERIFY] Steps verification FAILED for {date_str}: Expected {steps_value}, Got {verify_val.get('steps') if verify_val else 'NULL'}")
                 except Exception as e:
-                    print(f"❌ Error caching steps for {date_str}: {e}")
-                    pass
+                    print(f"❌ [CACHE_ERROR] Failed caching Steps for {date_str}: Value={steps_value}, Error={e}")
+                    import traceback
+                    traceback.print_exc()
             else:
                 if date_str in dates_str_list[:3]:  # Only log first 3 to avoid spam
                     print(f"⚠️ No steps data for {date_str}")
@@ -204,14 +220,27 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             except (KeyError, ValueError):
                 pass
         
+        # Use dates from API response if no master list provided
+        if dates_str_list is None:
+            dates_str_list = list(calories_lookup.keys())
+        
         for date_str in dates_str_list:
             calories_value = calories_lookup.get(date_str)
             if calories_value is not None:
                 try:
-                    cache_manager.set_daily_metrics(date=date_str, calories=calories_value)
+                    print(f"  [CACHE_DEBUG] Caching Calories for {date_str}: Value={calories_value} (Type: {type(calories_value).__name__})")
+                    cache_manager.set_daily_metrics(date=date_str, calories=int(calories_value))
                     cached_count += 1
-                except:
-                    pass
+                    # Verify immediately
+                    verify_val = cache_manager.get_daily_metrics(date_str)
+                    if verify_val and verify_val.get('calories') == int(calories_value):
+                        print(f"  ✅ [CACHE_VERIFY] Calories cached successfully for {date_str}")
+                    else:
+                        print(f"  ❌ [CACHE_VERIFY] Calories verification FAILED for {date_str}: Expected {calories_value}, Got {verify_val.get('calories') if verify_val else 'NULL'}")
+                except Exception as e:
+                    print(f"❌ [CACHE_ERROR] Failed caching Calories for {date_str}: Value={calories_value}, Error={e}")
+                    import traceback
+                    traceback.print_exc()
     
     elif metric_type == 'distance':
         distance_lookup = {}
@@ -223,14 +252,26 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             except (KeyError, ValueError):
                 pass
         
+        # Use dates from API response if no master list provided
+        if dates_str_list is None:
+            dates_str_list = list(distance_lookup.keys())
+        
         for date_str in dates_str_list:
             distance_value = distance_lookup.get(date_str)
             if distance_value is not None:
                 try:
-                    cache_manager.set_daily_metrics(date=date_str, distance=distance_value)
+                    print(f"  [CACHE_DEBUG] Caching Distance for {date_str}: Value={distance_value} (Type: {type(distance_value).__name__})")
+                    cache_manager.set_daily_metrics(date=date_str, distance=float(distance_value))
                     cached_count += 1
-                except:
-                    pass
+                    verify_val = cache_manager.get_daily_metrics(date_str)
+                    if verify_val and abs(verify_val.get('distance', 0) - float(distance_value)) < 0.01:
+                        print(f"  ✅ [CACHE_VERIFY] Distance cached successfully for {date_str}")
+                    else:
+                        print(f"  ❌ [CACHE_VERIFY] Distance verification FAILED for {date_str}: Expected {distance_value}, Got {verify_val.get('distance') if verify_val else 'NULL'}")
+                except Exception as e:
+                    print(f"❌ [CACHE_ERROR] Failed caching Distance for {date_str}: Value={distance_value}, Error={e}")
+                    import traceback
+                    traceback.print_exc()
     
     elif metric_type == 'floors':
         floors_lookup = {}
@@ -240,14 +281,26 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             except (KeyError, ValueError):
                 pass
         
+        # Use dates from API response if no master list provided
+        if dates_str_list is None:
+            dates_str_list = list(floors_lookup.keys())
+        
         for date_str in dates_str_list:
             floors_value = floors_lookup.get(date_str)
             if floors_value is not None:
                 try:
-                    cache_manager.set_daily_metrics(date=date_str, floors=floors_value)
+                    print(f"  [CACHE_DEBUG] Caching Floors for {date_str}: Value={floors_value} (Type: {type(floors_value).__name__})")
+                    cache_manager.set_daily_metrics(date=date_str, floors=int(floors_value))
                     cached_count += 1
-                except:
-                    pass
+                    verify_val = cache_manager.get_daily_metrics(date_str)
+                    if verify_val and verify_val.get('floors') == int(floors_value):
+                        print(f"  ✅ [CACHE_VERIFY] Floors cached successfully for {date_str}")
+                    else:
+                        print(f"  ❌ [CACHE_VERIFY] Floors verification FAILED for {date_str}: Expected {floors_value}, Got {verify_val.get('floors') if verify_val else 'NULL'}")
+                except Exception as e:
+                    print(f"❌ [CACHE_ERROR] Failed caching Floors for {date_str}: Value={floors_value}, Error={e}")
+                    import traceback
+                    traceback.print_exc()
     
     elif metric_type == 'azm':
         azm_lookup = {}
@@ -257,14 +310,26 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             except (KeyError, ValueError):
                 pass
         
+        # Use dates from API response if no master list provided
+        if dates_str_list is None:
+            dates_str_list = list(azm_lookup.keys())
+        
         for date_str in dates_str_list:
             azm_value = azm_lookup.get(date_str)
             if azm_value is not None:
                 try:
-                    cache_manager.set_daily_metrics(date=date_str, active_zone_minutes=azm_value)
+                    print(f"  [CACHE_DEBUG] Caching AZM for {date_str}: Value={azm_value} (Type: {type(azm_value).__name__})")
+                    cache_manager.set_daily_metrics(date=date_str, active_zone_minutes=int(azm_value))
                     cached_count += 1
-                except:
-                    pass
+                    verify_val = cache_manager.get_daily_metrics(date_str)
+                    if verify_val and verify_val.get('active_zone_minutes') == int(azm_value):
+                        print(f"  ✅ [CACHE_VERIFY] AZM cached successfully for {date_str}")
+                    else:
+                        print(f"  ❌ [CACHE_VERIFY] AZM verification FAILED for {date_str}: Expected {azm_value}, Got {verify_val.get('active_zone_minutes') if verify_val else 'NULL'}")
+                except Exception as e:
+                    print(f"❌ [CACHE_ERROR] Failed caching AZM for {date_str}: Value={azm_value}, Error={e}")
+                    import traceback
+                    traceback.print_exc()
     
     elif metric_type == 'heartrate':
         # 🐞 FIX: Cache both RHR AND HR zones (fat burn, cardio, peak)
@@ -291,21 +356,46 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             except (KeyError, ValueError, TypeError):
                 pass
         
+        # Use dates from API response if no master list provided
+        if dates_str_list is None:
+            dates_str_list = list(hr_lookup.keys())
+        
         for date_str in dates_str_list:
             hr_data = hr_lookup.get(date_str)
             if hr_data:
                 try:
+                    rhr = hr_data.get('rhr')
+                    fat_burn = hr_data.get('fat_burn')
+                    cardio = hr_data.get('cardio')
+                    peak = hr_data.get('peak')
+                    print(f"  [CACHE_DEBUG] Caching HR for {date_str}: RHR={rhr}, FatBurn={fat_burn}, Cardio={cardio}, Peak={peak}")
                     cache_manager.set_daily_metrics(
                         date=date_str, 
-                        resting_heart_rate=hr_data.get('rhr'),
-                        fat_burn_minutes=hr_data.get('fat_burn'),
-                        cardio_minutes=hr_data.get('cardio'),
-                        peak_minutes=hr_data.get('peak')
+                        resting_heart_rate=rhr,
+                        fat_burn_minutes=fat_burn,
+                        cardio_minutes=cardio,
+                        peak_minutes=peak
                     )
                     cached_count += 1
+                    # Verify immediately
+                    verify_val = cache_manager.get_daily_metrics(date_str)
+                    if verify_val:
+                        v_rhr = verify_val.get('resting_heart_rate')
+                        v_fb = verify_val.get('fat_burn_minutes')
+                        v_cardio = verify_val.get('cardio_minutes')
+                        v_peak = verify_val.get('peak_minutes')
+                        if v_rhr == rhr and v_fb == fat_burn and v_cardio == cardio and v_peak == peak:
+                            print(f"  ✅ [CACHE_VERIFY] HR cached successfully for {date_str}")
+                        else:
+                            print(f"  ❌ [CACHE_VERIFY] HR verification FAILED for {date_str}:")
+                            print(f"     Expected: RHR={rhr}, FB={fat_burn}, Cardio={cardio}, Peak={peak}")
+                            print(f"     Got:      RHR={v_rhr}, FB={v_fb}, Cardio={v_cardio}, Peak={v_peak}")
+                    else:
+                        print(f"  ❌ [CACHE_VERIFY] HR verification FAILED for {date_str}: No data returned")
                 except Exception as e:
-                    print(f"⚠️ Error caching HR for {date_str}: {e}")
-                    pass
+                    print(f"❌ [CACHE_ERROR] Failed caching HR for {date_str}: {e}")
+                    import traceback
+                    traceback.print_exc()
     
     elif metric_type == 'weight':
         weight_lookup = {}
@@ -317,14 +407,26 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             except (KeyError, ValueError):
                 pass
         
+        # Use dates from API response if no master list provided
+        if dates_str_list is None:
+            dates_str_list = list(weight_lookup.keys())
+        
         for date_str in dates_str_list:
             weight_value = weight_lookup.get(date_str)
             if weight_value is not None:
                 try:
-                    cache_manager.set_daily_metrics(date=date_str, weight=weight_value)
+                    print(f"  [CACHE_DEBUG] Caching Weight for {date_str}: Value={weight_value} (Type: {type(weight_value).__name__})")
+                    cache_manager.set_daily_metrics(date=date_str, weight=float(weight_value))
                     cached_count += 1
-                except:
-                    pass
+                    verify_val = cache_manager.get_daily_metrics(date_str)
+                    if verify_val and abs(verify_val.get('weight', 0) - float(weight_value)) < 0.1:
+                        print(f"  ✅ [CACHE_VERIFY] Weight cached successfully for {date_str}")
+                    else:
+                        print(f"  ❌ [CACHE_VERIFY] Weight verification FAILED for {date_str}: Expected {weight_value}, Got {verify_val.get('weight') if verify_val else 'NULL'}")
+                except Exception as e:
+                    print(f"❌ [CACHE_ERROR] Failed caching Weight for {date_str}: Value={weight_value}, Error={e}")
+                    import traceback
+                    traceback.print_exc()
     
     elif metric_type == 'spo2':
         spo2_lookup = {}
@@ -336,14 +438,26 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             except (KeyError, ValueError, TypeError):
                 pass
         
+        # Use dates from API response if no master list provided
+        if dates_str_list is None:
+            dates_str_list = list(spo2_lookup.keys())
+        
         for date_str in dates_str_list:
             spo2_value = spo2_lookup.get(date_str)
             if spo2_value is not None:
                 try:
-                    cache_manager.set_daily_metrics(date=date_str, spo2=spo2_value)
+                    print(f"  [CACHE_DEBUG] Caching SpO2 for {date_str}: Value={spo2_value} (Type: {type(spo2_value).__name__})")
+                    cache_manager.set_daily_metrics(date=date_str, spo2=float(spo2_value))
                     cached_count += 1
-                except:
-                    pass
+                    verify_val = cache_manager.get_daily_metrics(date_str)
+                    if verify_val and abs(verify_val.get('spo2', 0) - float(spo2_value)) < 0.1:
+                        print(f"  ✅ [CACHE_VERIFY] SpO2 cached successfully for {date_str}")
+                    else:
+                        print(f"  ❌ [CACHE_VERIFY] SpO2 verification FAILED for {date_str}: Expected {spo2_value}, Got {verify_val.get('spo2') if verify_val else 'NULL'}")
+                except Exception as e:
+                    print(f"❌ [CACHE_ERROR] Failed caching SpO2 for {date_str}: Value={spo2_value}, Error={e}")
+                    import traceback
+                    traceback.print_exc()
     
     return cached_count
 
@@ -392,21 +506,26 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
             api_calls_this_hour = 0
             MAX_CALLS_PER_HOUR = 145  # Conservative limit (leave 5 for user reports)
             
-            # 🐞 FIX: Refresh token at the start of each hourly cycle
-            if current_refresh_token:
+            # 🐞 CRITICAL FIX: Retrieve latest refresh token from cache and refresh at the start of each hourly cycle
+            # This ensures we always have a valid token, even if the session was updated elsewhere
+            latest_refresh_token = cache.get_refresh_token()
+            if latest_refresh_token:
+                current_refresh_token = latest_refresh_token
                 print("\n🔄 Refreshing access token for new hourly cycle...")
                 try:
                     new_access, new_refresh, new_expiry = refresh_access_token(current_refresh_token)
                     if new_access:
                         current_access_token = new_access
                         current_refresh_token = new_refresh
+                        # Save the new tokens back to the cache
+                        cache.store_refresh_token(new_refresh)
                         print(f"✅ Token refreshed! Valid for 8 hours (expires at {datetime.fromtimestamp(new_expiry).strftime('%H:%M:%S')})")
                     else:
                         print("⚠️ Token refresh failed, using existing token")
                 except Exception as e:
                     print(f"⚠️ Error refreshing token: {e}, using existing token")
             else:
-                print("⚠️ No refresh token available - token will expire after 8 hours")
+                print("⚠️ No refresh token available in cache - token will expire after 8 hours")
             
             headers = {"Authorization": f"Bearer {current_access_token}"}
             today = datetime.now().strftime('%Y-%m-%d')
@@ -499,22 +618,24 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                         response_data = response.json()
                         cached = 0
                         
+                        # 🐞 CRITICAL FIX: Don't pass full 365-day list - only cache dates that API returned data for
+                        # This prevents NULL overwrites when API doesn't return data for older dates
                         if metric_name == "Heart Rate":
-                            cached = process_and_cache_daily_metrics(dates_str_list, 'heartrate', response_data, cache)
+                            cached = process_and_cache_daily_metrics(None, 'heartrate', response_data, cache)
                         elif metric_name == "Steps":
-                            cached = process_and_cache_daily_metrics(dates_str_list, 'steps', response_data, cache)
+                            cached = process_and_cache_daily_metrics(None, 'steps', response_data, cache)
                         elif metric_name == "Weight":
-                            cached = process_and_cache_daily_metrics(dates_str_list, 'weight', response_data, cache)
+                            cached = process_and_cache_daily_metrics(None, 'weight', response_data, cache)
                         elif metric_name == "SpO2":
-                            cached = process_and_cache_daily_metrics(dates_str_list, 'spo2', response_data, cache)
+                            cached = process_and_cache_daily_metrics(None, 'spo2', response_data, cache)
                         elif metric_name == "Calories":
-                            cached = process_and_cache_daily_metrics(dates_str_list, 'calories', response_data, cache)
+                            cached = process_and_cache_daily_metrics(None, 'calories', response_data, cache)
                         elif metric_name == "Distance":
-                            cached = process_and_cache_daily_metrics(dates_str_list, 'distance', response_data, cache)
+                            cached = process_and_cache_daily_metrics(None, 'distance', response_data, cache)
                         elif metric_name == "Floors":
-                            cached = process_and_cache_daily_metrics(dates_str_list, 'floors', response_data, cache)
+                            cached = process_and_cache_daily_metrics(None, 'floors', response_data, cache)
                         elif metric_name == "Active Zone Minutes":
-                            cached = process_and_cache_daily_metrics(dates_str_list, 'azm', response_data, cache)
+                            cached = process_and_cache_daily_metrics(None, 'azm', response_data, cache)
                         elif metric_name == "Activities":
                             # Activities need special handling with pagination (API returns max 100 per call)
                             # Keep fetching until we get fewer than 100 activities or hit API limit
@@ -1961,9 +2082,35 @@ def display_workout_details(selected_date, oauth_token):
     """
     Display detailed workout information including HR zones for selected date.
     🐞 FIX: This function now fetches data directly from the cache.
+    🐞 CRITICAL FIX #3: Add token refresh logic before making API calls
     """
     if not selected_date or not oauth_token:
         return html.Div("Select a workout date to view details", style={'color': '#999', 'font-style': 'italic'})
+    
+    # 🐞 CRITICAL FIX: Check token expiry and refresh if needed
+    token_expiry = session.get('token_expiry', 0)
+    current_time = time.time()
+    
+    # If token expires in less than 5 minutes, refresh it
+    if current_time + 300 > token_expiry:
+        print(f"🔄 [WORKOUT_DETAILS] Token expiring soon, refreshing...")
+        refresh_token = cache.get_refresh_token()
+        if refresh_token:
+            try:
+                new_access, new_refresh, new_expiry = refresh_access_token(refresh_token)
+                if new_access:
+                    oauth_token = new_access
+                    session['access_token'] = new_access
+                    session['refresh_token'] = new_refresh
+                    session['token_expiry'] = new_expiry
+                    cache.store_refresh_token(new_refresh)
+                    print(f"✅ [WORKOUT_DETAILS] Token refreshed successfully")
+                else:
+                    print(f"⚠️ [WORKOUT_DETAILS] Token refresh failed")
+            except Exception as e:
+                print(f"❌ [WORKOUT_DETAILS] Error refreshing token: {e}")
+        else:
+            print(f"⚠️ [WORKOUT_DETAILS] No refresh token available")
     
     # Get stored activity data for the date directly from cache
     activities_from_cache = cache.get_activities(selected_date)
@@ -3014,61 +3161,26 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         all_cached = False  # Force API calls for today only
     
     if not all_cached:
-        print(f"📥 Cache incomplete - {len(missing_dates)} days missing. Fetching from API...")
+        # 🚨 CRITICAL FIX #4: STOP ALL FOREGROUND API CALLS
+        # Report generation should ONLY read from cache. If data is missing, show "Data Missing - Cache Builder Running"
+        # This prevents rate limit errors and ensures predictable behavior.
+        print(f"⚠️ Cache incomplete - {len(missing_dates)} days missing.")
         print(f"Missing dates: {missing_dates[:5]}{'...' if len(missing_dates) > 5 else ''}")
+        print(f"📊 Serving report from partial cache. Missing data will show as 'No Data Available'.")
+        print(f"💡 The background cache builder will fill in missing data automatically.")
         
-        # Collecting data-----------------------------------------------------------------------------------------------------------------------
+        # Set user profile to cached/default
+        user_profile = {"user": {"displayName": "Cached User", "firstName": "Cached", "lastName": "User"}}
         
-        try:
-            user_profile = requests.get("https://api.fitbit.com/1/user/-/profile.json", headers=headers).json()
-            
-            # Check for rate limiting or errors
-            if 'error' in user_profile:
-                error_code = user_profile['error'].get('code')
-                if error_code == 429:
-                    print("⚠️ RATE LIMIT EXCEEDED! Fitbit API limit: 150 requests/hour")
-                    print("Please wait at least 1 hour before generating another report.")
-                    # Return with error message (44 outputs total)
-                    empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
-                    empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
-                    return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.line(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), px.scatter(), html.P("Rate limit exceeded"), ""
-                else:
-                    print(f"API Error: {user_profile['error']}")
-                    
-            response_heartrate = requests.get("https://api.fitbit.com/1/user/-/activities/heart/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-            
-            # Check for rate limiting in heart rate response
-            if 'error' in response_heartrate:
-                error_code = response_heartrate['error'].get('code')
-                if error_code == 429:
-                    print("⚠️ RATE LIMIT EXCEEDED! Fitbit API limit: 150 requests/hour")
-                    print("Please wait at least 1 hour before generating another report.")
-                    empty_fig = px.line(title="Rate Limit Exceeded - Please wait 1 hour")
-                    empty_heatmap = px.imshow([[0]], title="Rate Limit Exceeded")
-                    return "⚠️ Rate Limit Exceeded", "Please wait at least 1 hour before trying again", "", empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.line(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Rate limit exceeded"), [], px.line(), px.pie(), [], px.scatter(), px.scatter(), html.P("Rate limit exceeded"), ""
-                    
-            response_steps = requests.get("https://api.fitbit.com/1/user/-/activities/steps/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-            response_weight = requests.get("https://api.fitbit.com/1/user/-/body/weight/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-            response_spo2 = requests.get("https://api.fitbit.com/1/user/-/spo2/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-        except Exception as e:
-            print(f"ERROR fetching initial data: {e}")
-            # Return empty results if API calls fail with valid empty plots
-            empty_fig = px.line(title="Error Fetching Data")
-            empty_heatmap = px.imshow([[0]], title="No Data Available")
-            return dash.no_update, dash.no_update, dash.no_update, empty_fig, [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("Error fetching data"), [], px.line(), px.pie(), [], px.scatter(), px.scatter(), html.P("Error fetching data"), ""
+        # Create empty response structures (won't make API calls)
+        response_heartrate = {"activities-heart": []}
+        response_steps = {"activities-steps": []}
+        response_weight = {"weight": []}
+        response_spo2 = []
     
-    # Build dates list for processing (use our pre-generated list if all_cached)
-    if all_cached:
-        temp_dates_list = dates_str_list
-    else:
-        temp_dates_list = []
-        if 'activities-heart' in response_heartrate:
-            for entry in response_heartrate['activities-heart']:
-                temp_dates_list.append(entry['dateTime'])
-        else:
-            print(f"ERROR: No heart rate data in response: {response_heartrate}")
-            empty_heatmap = px.imshow([[0]], title="No Data Available")
-            return dash.no_update, dash.no_update, dash.no_update, px.line(), [], px.bar(), empty_heatmap, [], px.bar(), [], [], [], px.line(), [], px.scatter(), [], px.bar(), px.bar(), [], [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': True}], px.line(), [], px.line(), [], px.line(), [], px.line(), [], px.bar(), [], px.bar(), px.bar(), [], px.bar(), [], [{'label': 'All', 'value': 'All'}], html.P("No heart rate data"), [], px.line(), px.pie(), [], px.scatter(), px.scatter(), html.P("No heart rate data"), ""
+    # 🚨 CRITICAL FIX #4: Always use dates_str_list (the requested date range)
+    # Don't rely on API responses since we're not making foreground API calls anymore
+    temp_dates_list = dates_str_list
     
     # 🚀 CACHE-FIRST: Check cache for advanced metrics before fetching from API
     response_hrv = {"hrv": []}
@@ -3125,91 +3237,13 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         
         print(f"✅ Loaded from cache: HRV={cached_count['hrv']}, BR={cached_count['br']}, Temp={cached_count['temp']}")
         
-        # Only fetch missing data
+        # 🚨 CRITICAL FIX #4: STOP ALL FOREGROUND API CALLS FOR ADVANCED METRICS
+        # The background cache builder will fill in missing data automatically
         total_missing = len(set(missing_hrv + missing_br + missing_temp))
         if total_missing > 0:
-            print(f"📥 Fetching {total_missing} missing advanced metrics from API...")
-            
-            def fetch_hrv_day(date_str):
-                try:
-                    hrv_day = requests.get(f"https://api.fitbit.com/1/user/-/hrv/date/{date_str}.json", headers=headers, timeout=10).json()
-                    if "hrv" in hrv_day and len(hrv_day["hrv"]) > 0:
-                        return {"dateTime": date_str, "value": hrv_day["hrv"][0]["value"]}
-                except:
-                    pass
-                return None
-            
-            def fetch_breathing_day(date_str):
-                try:
-                    br_day = requests.get(f"https://api.fitbit.com/1/user/-/br/date/{date_str}.json", headers=headers, timeout=10).json()
-                    if "br" in br_day and len(br_day["br"]) > 0:
-                        return {"dateTime": date_str, "value": br_day["br"][0]["value"]}
-                except:
-                    pass
-                return None
-            
-            def fetch_temperature_day(date_str):
-                try:
-                    temp_day = requests.get(f"https://api.fitbit.com/1/user/-/temp/skin/date/{date_str}.json", headers=headers, timeout=10).json()
-                    if "tempSkin" in temp_day and len(temp_day["tempSkin"]) > 0:
-                        return {"dateTime": date_str, "value": temp_day["tempSkin"][0]["value"]}
-                except:
-                    pass
-                return None
-            
-            # Fetch only missing data in parallel
-            with ThreadPoolExecutor(max_workers=20) as executor:
-                # Submit only missing dates
-                hrv_futures = {executor.submit(fetch_hrv_day, date): date for date in missing_hrv}
-                br_futures = {executor.submit(fetch_breathing_day, date): date for date in missing_br}
-                temp_futures = {executor.submit(fetch_temperature_day, date): date for date in missing_temp}
-                
-                # Collect HRV results
-                for future in as_completed(hrv_futures):
-                    result = future.result()
-                    if result:
-                        response_hrv["hrv"].append(result)
-                        # Cache immediately
-                        try:
-                            cache.set_advanced_metrics(
-                                date=result["dateTime"],
-                                hrv=result["value"]["dailyRmssd"]
-                            )
-                        except:
-                            pass
-                
-                # Collect Breathing Rate results
-                for future in as_completed(br_futures):
-                    result = future.result()
-                    if result:
-                        response_breathing["br"].append(result)
-                        # Cache immediately
-                        try:
-                            cache.set_advanced_metrics(
-                                date=result["dateTime"],
-                                breathing_rate=result["value"]["breathingRate"]
-                            )
-                        except:
-                            pass
-                
-                # Collect Temperature results
-                for future in as_completed(temp_futures):
-                    result = future.result()
-                    if result:
-                        response_temperature["tempSkin"].append(result)
-                        # Cache immediately
-                        try:
-                            temp_value = result["value"]
-                            if isinstance(temp_value, dict):
-                                temp_value = temp_value.get("nightlyRelative", temp_value.get("value"))
-                            cache.set_advanced_metrics(
-                                date=result["dateTime"],
-                                temperature=temp_value
-                            )
-                        except:
-                            pass
-            
-            print(f"✅ Fetched and cached: HRV={len([r for r in response_hrv['hrv'] if r['dateTime'] in missing_hrv])}, BR={len([r for r in response_breathing['br'] if r['dateTime'] in missing_br])}, Temp={len([r for r in response_temperature['tempSkin'] if r['dateTime'] in missing_temp])}")
+            print(f"⚠️ {total_missing} advanced metrics missing from cache (will show as 'No Data').")
+            print(f"💡 The background cache builder will populate these automatically.")
+            # 🚨 API CALLS REMOVED - Data will show as "No Data" until cache builder populates it
         else:
             print("✅ All advanced metrics loaded from cache - 0 API calls!")
         
@@ -3217,45 +3251,14 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     else:
         print("ℹ️ Advanced metrics disabled - skipping HRV, Breathing Rate, and Temperature to conserve API calls")
     
-    # 🐞 FIX: Only fetch from API if NOT using 100% cached data
-    if not (all_cached and not refresh_today):
-        # Cardio Fitness - Fetch in 30-day chunks (API limitation)
-        response_cardio_fitness = {"cardioScore": []}
-        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-        current_dt = start_dt
-        while current_dt <= end_dt:
-            chunk_end = min(current_dt + timedelta(days=29), end_dt)
-            try:
-                cf_chunk = requests.get(f"https://api.fitbit.com/1/user/-/cardioscore/date/{current_dt.strftime('%Y-%m-%d')}/{chunk_end.strftime('%Y-%m-%d')}.json", headers=headers).json()
-                if "cardioScore" in cf_chunk:
-                    response_cardio_fitness["cardioScore"].extend(cf_chunk["cardioScore"])
-            except:
-                pass
-            current_dt = chunk_end + timedelta(days=1)
-        print(f"Cardio Fitness API Response: Fetched {len(response_cardio_fitness.get('cardioScore', []))} days of data")
-        try:
-            response_calories = requests.get("https://api.fitbit.com/1/user/-/activities/calories/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-        except:
-            response_calories = {}
-        try:
-            response_distance = requests.get("https://api.fitbit.com/1/user/-/activities/distance/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-        except:
-            response_distance = {}
-        try:
-            response_floors = requests.get("https://api.fitbit.com/1/user/-/activities/floors/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-        except:
-            response_floors = {}
-        try:
-            response_azm = requests.get("https://api.fitbit.com/1/user/-/activities/active-zone-minutes/date/"+ start_date +"/"+ end_date +".json", headers=headers).json()
-        except:
-            response_azm = {}
-        try:
-            # 🐞 FIX: Fitbit API only accepts ONE date parameter (beforeDate OR afterDate, not both)
-            response_activities = requests.get("https://api.fitbit.com/1/user/-/activities/list.json?beforeDate="+ end_date +"&sort=asc&offset=0&limit=100", headers=headers).json()
-        except:
-            response_activities = {}
-    # else: The necessary response objects (like response_activities) are already populated from the cache path
+    # 🚨 CRITICAL FIX #4: STOP ALL FOREGROUND API CALLS FOR BASIC METRICS
+    # Create empty response structures - data will come from cache only
+    response_cardio_fitness = {"cardioScore": []}
+    response_calories = {"activities-calories": []}
+    response_distance = {"activities-distance": []}
+    response_floors = {"activities-floors": []}
+    response_azm = {"activities-active-zone-minutes": []}
+    response_activities = {"activities": []}
 
     # Processing data-----------------------------------------------------------------------------------------------------------------------
     days_name_list = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday','Sunday')
@@ -3632,51 +3635,12 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             missing_dates.append(date_str)
     
     print(f"✅ Loaded {cached_count} dates from cache")
-    print(f"🔄 Need to fetch {len(missing_dates)} dates from API")
     
-    # Fetch missing dates from API (in batches of 30 to avoid rate limits)
+    # 🚨 CRITICAL FIX #4: STOP ALL FOREGROUND API CALLS FOR SLEEP DATA
+    # Missing sleep data will show as "No Data" until cache builder populates it
     if missing_dates:
-        for i in range(0, len(missing_dates), 30):
-            batch = missing_dates[i:i+30]
-            print(f"📥 Fetching sleep batch {i//30 + 1} ({len(batch)} dates)...")
-            
-            # Use the populate_sleep_score_cache function which handles caching
-            fetched_count = populate_sleep_score_cache(batch, headers, force_refresh=False)
-            
-            # Now load the newly cached data into our dict
-            for date_str in batch:
-                cached_data = cache.get_sleep_data(date_str)
-                if cached_data:
-                    try:
-                        sleep_start_time = datetime.strptime(cached_data['start_time'], "%Y-%m-%dT%H:%M:%S.%f")
-                        if sleep_start_time.hour < 12:
-                            sleep_start_time = sleep_start_time + timedelta(hours=12)
-                        else:
-                            sleep_start_time = sleep_start_time + timedelta(hours=-12)
-                        sleep_time_of_day = sleep_start_time.time()
-                        
-                        sleep_record_dict[date_str] = {
-                            'deep': cached_data['deep'],
-                            'light': cached_data['light'],
-                            'rem': cached_data['rem'],
-                            'wake': cached_data['wake'],
-                            'total_sleep': cached_data['total_sleep'],
-                            'start_time_seconds': (sleep_time_of_day.hour * 3600) + (sleep_time_of_day.minute * 60) + sleep_time_of_day.second,
-                            'sleep_score': cached_data['sleep_score']
-                        }
-                        
-                        sleep_detail_data_store[date_str] = {
-                            'deep': cached_data['deep'],
-                            'light': cached_data['light'],
-                            'rem': cached_data['rem'],
-                            'wake': cached_data['wake'],
-                            'total_sleep': cached_data['total_sleep'],
-                            'start_time': cached_data['start_time'],
-                            'sleep_score': cached_data['sleep_score'],
-                            'efficiency': cached_data['efficiency']
-                        }
-                    except Exception as e:
-                        print(f"⚠️ Error processing fetched data for {date_str}: {e}")
+        print(f"⚠️ {len(missing_dates)} sleep dates missing from cache (will show as 'No Data').")
+        print(f"💡 The background cache builder will populate these automatically.")
 
     for day in dates_str_list:
         if day in sleep_record_dict:

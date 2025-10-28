@@ -200,6 +200,32 @@ This enhanced edition is built upon the excellent foundation created by **[@arpa
 
 Special thanks to [@dipanghosh](https://github.com/dipanghosh) for contributions to sleep schedule analysis and aesthetics in the original project.
 
+---
+
+## 🔧 Recent Critical Bug Fixes
+
+### 🐛 NULL Overwrites Fix (October 28, 2025)
+**Symptom**: Fragmented metrics - Oct 5-10 had some data, Oct 20-26 had different data, Active Zone Minutes stopped on Oct 19, exercise log empty.
+
+**Root Cause**: Phase 1 cache builder iterated over ALL 365 days, but Fitbit API only returns dates with data. When a metric had no data for a date, the function skipped caching, but subsequent metric UPSERTs would overwrite previously cached values with NULL.
+
+**Fix**: Modified `process_and_cache_daily_metrics()` to extract dates directly from API response instead of iterating over a fixed 365-day list. Now only caches dates that the API actually returned.
+
+**Impact**: Eliminates fragmented data across date ranges.
+
+---
+
+### 🐛 Heart Rate Zones Fix (October 27, 2025)
+**Symptom**: Cache logs showed "✅ Cached 366 days of heart rate data" but HR zones were empty in reports.
+
+**Root Cause**: Phase 1 cache builder only cached Resting Heart Rate, not the Fat Burn/Cardio/Peak zone minutes.
+
+**Fix**: Expanded `heartrate` handler to extract and cache all HR zone data (Fat Burn at index 1, Cardio at index 2, Peak at index 3).
+
+**Impact**: HR zones now populate correctly from cache.
+
+---
+
 ### Enhanced Edition Philosophy
 
 This fork represents a **fundamental architectural shift** from the original project:
