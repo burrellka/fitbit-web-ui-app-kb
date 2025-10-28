@@ -4955,7 +4955,7 @@ def api_cache_log():
             if 'sleep' in selected_metrics:
                 cursor.execute('''
                     SELECT reality_score, proxy_score, efficiency, 
-                           deep, light, rem, wake, total_minutes
+                           deep_minutes, light_minutes, rem_minutes, wake_minutes, total_sleep
                     FROM sleep_cache WHERE date = ?
                 ''', (date,))
                 sleep = cursor.fetchone()
