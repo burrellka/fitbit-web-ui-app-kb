@@ -204,6 +204,26 @@ Special thanks to [@dipanghosh](https://github.com/dipanghosh) for contributions
 
 ## 🔧 Recent Critical Bug Fixes
 
+### 🐛 Comprehensive Per-Metric Caching Fix (October 28, 2025 - Final)
+**Symptom**: Even after previous fixes, some metrics remained fragmented. For example, Steps might be 100% cached but Calories only 80% cached, despite both being Phase 1 metrics.
+
+**Root Cause**: Gemini identified that the fragmentation bug affected **ALL 12+ metrics**, not just the 4 Phase 3 metrics (Sleep, HRV, BR, Temp). If any Phase 1 metric (Steps, Calories, Distance, Floors, AZM, RHR, Weight, SpO2) failed during initial fetch, the builder would never retry it.
+
+**The Fix - Three Parts:**
+
+1. **`cache_manager.py` - Universal Per-Metric Checking**: Added individual SQL checks for ALL metrics (steps, calories, distance, floors, azm, heartrate, weight, spo2, cardio_fitness, activities, hrv, breathing_rate, temperature, sleep). Each uses `WHERE metric_column IS NOT NULL` to accurately detect missing dates.
+
+2. **`app.py` - Phase 1 Retry Loop**: Added intelligent retry logic after Phase 1 completes. The builder now:
+   - Checks EACH Phase 1 metric individually for missing dates
+   - Re-fetches only the metrics that have gaps
+   - Runs every hourly cycle until ALL metrics are 100% cached
+
+3. **`app.py` - Phase 3 Per-Metric (Already Implemented)**: Each Phase 3 metric (Sleep, HRV, Breathing Rate, Temperature) is fetched independently with its own missing date check.
+
+**Impact**: Eliminates ALL cache fragmentation. Every metric is now tracked and filled independently, ensuring eventual 100% cache completion for all metrics.
+
+---
+
 ### 🐛 NULL Overwrites Fix (October 28, 2025)
 **Symptom**: Fragmented metrics - Oct 5-10 had some data, Oct 20-26 had different data, Active Zone Minutes stopped on Oct 19, exercise log empty.
 
