@@ -504,7 +504,7 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
     try:
         while cache_builder_running:
             api_calls_this_hour = 0
-            MAX_CALLS_PER_HOUR = 145  # Conservative limit (leave 5 for user reports)
+            MAX_CALLS_PER_HOUR = 130  # Leave 20 calls free for user interaction (report generation + workout details)
             
             # === START CRITICAL FIX #1: ALWAYS GET LATEST REFRESH TOKEN ===
             # This logic must run INSIDE the hourly loop
