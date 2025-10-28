@@ -4047,6 +4047,8 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             style_header={'backgroundColor': '#336699','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, 
             style_cell={'textAlign': 'center'},
             page_size=20,
+            filter_action='native',  # Enable built-in filtering
+            sort_action='native',     # Enable built-in sorting
             export_format='csv',  # Enable CSV export
             export_headers='display'
         )
