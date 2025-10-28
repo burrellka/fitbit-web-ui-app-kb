@@ -850,18 +850,27 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                                 
                                 elif metric_name == "HRV" and "hrv" in data and len(data["hrv"]) > 0:
                                     hrv_value = data["hrv"][0]["value"].get("dailyRmssd")
-                                    if hrv_value:
+                                    # 🐞 FIX: Check for None, not truthiness (0 is valid!)
+                                    if hrv_value is not None:
                                         cache.set_advanced_metrics(date=date_str, hrv=hrv_value)
+                                        print(f"   💾 Cached HRV for {date_str}: {hrv_value}")
+                                    else:
+                                        print(f"   ⚠️ No HRV data for {date_str}")
                                 
                                 elif metric_name == "Breathing" and "br" in data and len(data["br"]) > 0:
                                     br_value = data["br"][0]["value"].get("breathingRate")
-                                    if br_value:
+                                    # 🐞 FIX: Check for None, not truthiness (0 is valid!)
+                                    if br_value is not None:
                                         cache.set_advanced_metrics(date=date_str, breathing_rate=br_value)
+                                        print(f"   💾 Cached BR for {date_str}: {br_value}")
+                                    else:
+                                        print(f"   ⚠️ No BR data for {date_str}")
                                 
                                 elif metric_name == "Temperature" and "tempSkin" in data and len(data["tempSkin"]) > 0:
                                     temp_value = data["tempSkin"][0]["value"]
                                     if isinstance(temp_value, dict):
                                         temp_value = temp_value.get("nightlyRelative", temp_value.get("value"))
+                                    # Already correct: checks "is not None"
                                     if temp_value is not None:
                                         cache.set_advanced_metrics(date=date_str, temperature=temp_value)
                                 
