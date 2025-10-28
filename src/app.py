@@ -688,17 +688,17 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                                 try:
                                     activity_date = datetime.strptime(activity['startTime'][:10], '%Y-%m-%d').strftime("%Y-%m-%d")
                                     activity_id = str(activity.get('logId', f"{activity_date}_{activity.get('activityName', 'activity')}"))
-                                cache.set_activity(
-                                    activity_id=activity_id,
-                                    date=activity_date,
-                                    activity_name=activity.get('activityName', 'N/A'),
-                                    duration_ms=activity.get('duration'),
-                                    calories=activity.get('calories'),
-                                    avg_heart_rate=activity.get('averageHeartRate'),
-                                    steps=activity.get('steps'),
-                                    distance=activity.get('distance'),
-                                    activity_data_json=json.dumps(activity)
-                                )
+                                    cache.set_activity(
+                                        activity_id=activity_id,
+                                        date=activity_date,
+                                        activity_name=activity.get('activityName', 'N/A'),
+                                        duration_ms=activity.get('duration'),
+                                        calories=activity.get('calories'),
+                                        avg_heart_rate=activity.get('averageHeartRate'),
+                                        steps=activity.get('steps'),
+                                        distance=activity.get('distance'),
+                                        activity_data_json=json.dumps(activity)
+                                    )
                                     cached += 1
                                 except Exception as e:
                                     pass
