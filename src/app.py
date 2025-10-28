@@ -263,21 +263,44 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
                     pass
     
     elif metric_type == 'heartrate':
+        # 🐞 FIX: Cache both RHR AND HR zones (fat burn, cardio, peak)
         hr_lookup = {}
         for entry in response_data.get('activities-heart', []):
             try:
+                date_str = entry['dateTime']
+                hr_data = {}
+                
+                # Resting Heart Rate
                 if 'value' in entry and 'restingHeartRate' in entry['value']:
-                    hr_lookup[entry['dateTime']] = entry['value']['restingHeartRate']
-            except (KeyError, ValueError):
+                    hr_data['rhr'] = entry['value']['restingHeartRate']
+                
+                # Heart Rate Zones (fat burn, cardio, peak)
+                if 'value' in entry and 'heartRateZones' in entry['value']:
+                    zones = entry['value']['heartRateZones']
+                    if len(zones) >= 4:
+                        hr_data['fat_burn'] = zones[1].get('minutes', 0)  # Index 1 = Fat Burn
+                        hr_data['cardio'] = zones[2].get('minutes', 0)     # Index 2 = Cardio
+                        hr_data['peak'] = zones[3].get('minutes', 0)       # Index 3 = Peak
+                
+                if hr_data:  # Only add if we have at least some data
+                    hr_lookup[date_str] = hr_data
+            except (KeyError, ValueError, TypeError):
                 pass
         
         for date_str in dates_str_list:
-            hr_value = hr_lookup.get(date_str)
-            if hr_value is not None:
+            hr_data = hr_lookup.get(date_str)
+            if hr_data:
                 try:
-                    cache_manager.set_daily_metrics(date=date_str, resting_heart_rate=hr_value)
+                    cache_manager.set_daily_metrics(
+                        date=date_str, 
+                        resting_heart_rate=hr_data.get('rhr'),
+                        fat_burn_minutes=hr_data.get('fat_burn'),
+                        cardio_minutes=hr_data.get('cardio'),
+                        peak_minutes=hr_data.get('peak')
+                    )
                     cached_count += 1
-                except:
+                except Exception as e:
+                    print(f"⚠️ Error caching HR for {date_str}: {e}")
                     pass
     
     elif metric_type == 'weight':
