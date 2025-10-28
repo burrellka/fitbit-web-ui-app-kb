@@ -3986,6 +3986,16 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     activities_by_date = {}  # Store activities by date for drill-down
     activities_cached = 0
     
+    # 🐞 FIX: Load activities from cache if in cache-only mode
+    if all_cached and not refresh_today:
+        print("📦 Loading activities from cache...")
+        cached_activities = cache.get_activities_in_range(start_date, end_date)
+        if cached_activities:
+            response_activities = {"activities": cached_activities}
+            print(f"✅ Loaded {len(cached_activities)} activities from cache")
+        else:
+            print("⚠️ No cached activities found for this date range")
+    
     for activity in response_activities.get('activities', []):
         try:
             activity_date = datetime.strptime(activity['startTime'][:10], '%Y-%m-%d').strftime("%Y-%m-%d")
