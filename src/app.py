@@ -506,28 +506,43 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
             api_calls_this_hour = 0
             MAX_CALLS_PER_HOUR = 145  # Conservative limit (leave 5 for user reports)
             
-            # 🐞 CRITICAL FIX: Retrieve latest refresh token from cache and refresh at the start of each hourly cycle
-            # This ensures we always have a valid token, even if the session was updated elsewhere
-            latest_refresh_token = cache.get_refresh_token()
-            if latest_refresh_token:
-                current_refresh_token = latest_refresh_token
-                print("\n🔄 Refreshing access token for new hourly cycle...")
-                try:
-                    new_access, new_refresh, new_expiry = refresh_access_token(current_refresh_token)
-                    if new_access:
-                        current_access_token = new_access
-                        current_refresh_token = new_refresh
-                        # Save the new tokens back to the cache
-                        cache.store_refresh_token(new_refresh)
-                        print(f"✅ Token refreshed! Valid for 8 hours (expires at {datetime.fromtimestamp(new_expiry).strftime('%H:%M:%S')})")
-                    else:
-                        print("⚠️ Token refresh failed, using existing token")
-                except Exception as e:
-                    print(f"⚠️ Error refreshing token: {e}, using existing token")
-            else:
-                print("⚠️ No refresh token available in cache - token will expire after 8 hours")
+            # === START CRITICAL FIX #1: ALWAYS GET LATEST REFRESH TOKEN ===
+            # This logic must run INSIDE the hourly loop
             
-            headers = {"Authorization": f"Bearer {current_access_token}"}
+            current_refresh_token = cache.get_refresh_token()  # GET LATEST TOKEN FROM DB
+            if not current_refresh_token:
+                print("❌ Background builder stopping: No refresh token found in cache. Please log in again.")
+                cache_builder_running = False  # Stop the thread
+                break  # Exit the while loop
+
+            print("\n🔄 Refreshing access token for new hourly cycle...")
+            try:
+                # Use the existing refresh_access_token function
+                new_access, new_refresh, new_expiry = refresh_access_token(current_refresh_token)
+                
+                if new_access:
+                    current_access_token = new_access
+                    headers = {"Authorization": f"Bearer {current_access_token}"}
+                    print(f"✅ Token refreshed successfully! Valid for 8 hours.")
+
+                    # IMPORTANT: Update the refresh token *back* into the cache if it changed
+                    if new_refresh and new_refresh != current_refresh_token:
+                        print("✨ New refresh token received, updating cache...")
+                        cache.store_refresh_token(new_refresh, 28800)
+                        current_refresh_token = new_refresh  # Use the newest one going forward
+                
+                else:
+                    print("❌ Token refresh failed! Background builder pausing for 1 hour.")
+                    time.sleep(3600)  # Wait an hour before retrying
+                    continue  # Skip to the next hourly cycle
+            
+            except Exception as e:
+                print(f"❌ CRITICAL Error refreshing token: {e}. Background builder pausing for 1 hour.")
+                import traceback
+                traceback.print_exc()
+                time.sleep(3600)  # Wait an hour before retrying
+                continue  # Skip to the next hourly cycle
+            # === END CRITICAL FIX #1 ===
             today = datetime.now().strftime('%Y-%m-%d')
             yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
             
@@ -2076,41 +2091,42 @@ sleep_detail_data_store = {}
 @app.callback(
     Output('workout-detail-display', 'children'),
     Input('workout-date-selector', 'value'),
-    State('oauth-token', 'data')
+    State('oauth-token', 'data'),
+    State('refresh-token', 'data'),  # <-- ADD REFRESH TOKEN
+    State('token-expiry', 'data')    # <-- ADD EXPIRY
 )
-def display_workout_details(selected_date, oauth_token):
+def display_workout_details(selected_date, oauth_token, refresh_token, token_expiry):  # <-- ADD ARGUMENTS
     """
     Display detailed workout information including HR zones for selected date.
     🐞 FIX: This function now fetches data directly from the cache.
-    🐞 CRITICAL FIX #3: Add token refresh logic before making API calls
+    🐞 CRITICAL FIX #2: Add token refresh logic before making API calls
     """
     if not selected_date or not oauth_token:
         return html.Div("Select a workout date to view details", style={'color': '#999', 'font-style': 'italic'})
     
-    # 🐞 CRITICAL FIX: Check token expiry and refresh if needed
-    token_expiry = session.get('token_expiry', 0)
+    # === START CRITICAL FIX #2: REFRESH TOKEN IF NEEDED ===
     current_time = time.time()
-    
-    # If token expires in less than 5 minutes, refresh it
-    if current_time + 300 > token_expiry:
+    if refresh_token and token_expiry and current_time >= (token_expiry - 300):  # 5 min buffer
         print(f"🔄 [WORKOUT_DETAILS] Token expiring soon, refreshing...")
-        refresh_token = cache.get_refresh_token()
-        if refresh_token:
-            try:
-                new_access, new_refresh, new_expiry = refresh_access_token(refresh_token)
-                if new_access:
-                    oauth_token = new_access
-                    session['access_token'] = new_access
-                    session['refresh_token'] = new_refresh
-                    session['token_expiry'] = new_expiry
-                    cache.store_refresh_token(new_refresh)
-                    print(f"✅ [WORKOUT_DETAILS] Token refreshed successfully")
-                else:
-                    print(f"⚠️ [WORKOUT_DETAILS] Token refresh failed")
-            except Exception as e:
-                print(f"❌ [WORKOUT_DETAILS] Error refreshing token: {e}")
-        else:
-            print(f"⚠️ [WORKOUT_DETAILS] No refresh token available")
+        try:
+            new_access, new_refresh, new_expiry = refresh_access_token(refresh_token)
+            if new_access:
+                oauth_token = new_access
+                # Update session store for main app
+                session['access_token'] = new_access
+                session['refresh_token'] = new_refresh
+                session['token_expiry'] = new_expiry
+                cache.store_refresh_token(new_refresh, 28800)  # Store it persistently
+                print(f"✅ [WORKOUT_DETAILS] Token refreshed successfully")
+            else:
+                print(f"⚠️ [WORKOUT_DETAILS] Token refresh failed")
+                return html.Div("Error: Token refresh failed. Please log in again.", style={'color': 'red'})
+        except Exception as e:
+            print(f"❌ [WORKOUT_DETAILS] Error refreshing token: {e}")
+            import traceback
+            traceback.print_exc()
+            return html.Div(f"Error refreshing token: {e}", style={'color': 'red'})
+    # === END CRITICAL FIX #2 ===
     
     # Get stored activity data for the date directly from cache
     activities_from_cache = cache.get_activities(selected_date)
