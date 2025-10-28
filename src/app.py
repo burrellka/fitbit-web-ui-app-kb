@@ -4270,7 +4270,6 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     if sleep_data_rows:
         sleep_data_df = pd.DataFrame(sleep_data_rows)
         sleep_data_table_output = dash_table.DataTable(
-            id='sleep-data-table',
             data=sleep_data_df.to_dict('records'),
             columns=[{"name": i, "id": i} for i in sleep_data_df.columns],
             style_data_conditional=[
