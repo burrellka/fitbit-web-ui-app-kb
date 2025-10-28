@@ -2855,30 +2855,6 @@ def display_sleep_details(selected_date, oauth_token):
         ]),
     ])
 
-@app.callback(
-    Output('exercise-data-table', 'data', allow_duplicate=True),
-    Input('exercise-type-filter', 'value'),
-    State('exercise-data-table', 'data'),
-    State('exercise-data-table', 'columns'),
-    prevent_initial_call=True
-)
-def filter_exercise_log(selected_type, full_data, columns):
-    """Filter exercise log by activity type"""
-    if not selected_type or not full_data:
-        return dash.no_update
-    
-    # Store original data on first load
-    if not hasattr(filter_exercise_log, 'original_data'):
-        filter_exercise_log.original_data = full_data
-    
-    # Filter based on selected type
-    if selected_type == 'All':
-        return filter_exercise_log.original_data
-    else:
-        filtered_data = [row for row in filter_exercise_log.original_data if row.get('Activity') == selected_type]
-        return filtered_data if filtered_data else filter_exercise_log.original_data
-
-
 def seconds_to_tick_label(seconds):
     """Calculate the number of hours, minutes, and remaining seconds"""
     hours, remainder = divmod(seconds, 3600)
