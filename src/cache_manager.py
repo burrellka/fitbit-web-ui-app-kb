@@ -607,6 +607,46 @@ class FitbitCache:
                 })
             return activities
     
+    def get_activities_in_range(self, start_date: str, end_date: str) -> List[Dict]:
+        """Get cached activities for a date range"""
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT activity_id, activity_name, duration_ms, calories, avg_heart_rate,
+                       steps, distance, activity_data_json, date
+                FROM activities_cache 
+                WHERE date >= ? AND date <= ?
+                ORDER BY date DESC
+            ''', (start_date, end_date))
+            results = cursor.fetchall()
+            conn.close()
+            
+            activities = []
+            for row in results:
+                # Parse the JSON string back to dict if it exists
+                try:
+                    activity_dict = eval(row[7]) if row[7] else {}
+                except:
+                    activity_dict = {}
+                
+                # Merge cached fields with original activity data
+                if activity_dict:
+                    activities.append(activity_dict)
+                else:
+                    # Fallback: construct from cached fields
+                    activities.append({
+                        'logId': row[0],
+                        'activityName': row[1],
+                        'duration': row[2],
+                        'calories': row[3],
+                        'averageHeartRate': row[4],
+                        'steps': row[5],
+                        'distance': row[6],
+                        'startTime': f"{row[8]}T00:00:00.000"
+                    })
+            return activities
+    
     def set_activity(self, activity_id: str, date: str, activity_name: str,
                     duration_ms: int = None, calories: int = None, avg_heart_rate: int = None,
                     steps: int = None, distance: float = None, activity_data_json: str = None):
