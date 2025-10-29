@@ -401,12 +401,16 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
     elif metric_type == 'weight':
         weight_lookup = {}
         # 1. Build the lookup dictionary FIRST
-        for entry in response_data.get('weight', []):
+        
+        # 🐞 FIX: Use 'body-weight' key, not 'weight'
+        for entry in response_data.get('body-weight', []):
             try:
-                date_str = entry['date']
+                # 🐞 FIX: Use 'dateTime' key, not 'date'
+                date_str = entry['dateTime']
                 weight_kg = float(entry['weight'])
                 weight_lbs = round(weight_kg * 2.20462, 1)
-                body_fat_pct = entry.get('fat') # Get body fat %
+                body_fat_pct = entry.get('fat') # 'fat' key is correct
+                
                 weight_lookup[date_str] = {'weight': weight_lbs, 'body_fat': body_fat_pct}
             except (KeyError, ValueError, TypeError) as e:
                 print(f"  [CACHE_DEBUG] Error parsing weight entry: {entry}, Error: {e}")
@@ -416,10 +420,8 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
         for date_str, weight_data in weight_lookup.items():
             if weight_data is not None:
                 try:
-                    # --- START FIX: Define variables correctly ---
                     weight_value = weight_data.get('weight')
                     body_fat_value = weight_data.get('body_fat')
-                    # --- END FIX ---
                     
                     if weight_value is None: # Skip if no weight value
                         continue
@@ -432,7 +434,6 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
                     
                     # 4. Verify the write
                     verify_val = cache_manager.get_daily_metrics(date_str)
-                    # Check if weight is not None and matches
                     if verify_val and verify_val.get('weight') is not None and abs(verify_val.get('weight', 0) - float(weight_value)) < 0.1:
                         print(f"  ✅ [CACHE_VERIFY] Weight/Fat cached successfully for {date_str}")
                     else:
