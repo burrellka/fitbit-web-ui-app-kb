@@ -60,18 +60,6 @@ class FitbitCache:
             except sqlite3.OperationalError:
                 pass  # Column already exists
             
-            # Add EOV column to daily_metrics_cache (migration for existing databases)
-            try:
-                cursor.execute('ALTER TABLE daily_metrics_cache ADD COLUMN eov REAL')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-            
-            # Add body_fat column to daily_metrics_cache (migration for existing databases)
-            try:
-                cursor.execute('ALTER TABLE daily_metrics_cache ADD COLUMN body_fat REAL')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-            
             # Advanced metrics table
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS advanced_metrics_cache (
@@ -90,6 +78,7 @@ class FitbitCache:
                     resting_heart_rate INTEGER,
                     steps INTEGER,
                     weight REAL,
+                    body_fat REAL,
                     spo2 REAL,
                     eov REAL,
                     calories INTEGER,
@@ -102,6 +91,19 @@ class FitbitCache:
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            
+            # Migrations for existing databases (run AFTER table creation)
+            # Add EOV column to daily_metrics_cache
+            try:
+                cursor.execute('ALTER TABLE daily_metrics_cache ADD COLUMN eov REAL')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            # Add body_fat column to daily_metrics_cache
+            try:
+                cursor.execute('ALTER TABLE daily_metrics_cache ADD COLUMN body_fat REAL')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
             
             # Cardio fitness table
             cursor.execute('''
