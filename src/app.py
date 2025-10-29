@@ -400,33 +400,38 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
     
     elif metric_type == 'weight':
         weight_lookup = {}
+        # 1. Build the lookup dictionary FIRST
         for entry in response_data.get('weight', []):
             try:
+                date_str = entry['date']
                 weight_kg = float(entry['weight'])
                 weight_lbs = round(weight_kg * 2.20462, 1)
-                body_fat_pct = entry.get('fat')  # Body fat percentage from Fitbit API
-                weight_lookup[entry['date']] = {'weight': weight_lbs, 'body_fat': body_fat_pct}
-            except (KeyError, ValueError):
+                body_fat_pct = entry.get('fat')
+                weight_lookup[date_str] = {'weight': weight_lbs, 'body_fat': body_fat_pct}
+            except (KeyError, ValueError, TypeError) as e:
+                print(f"  [CACHE_DEBUG] Error parsing weight entry: {entry}, Error: {e}")
                 pass
         
-        # Use dates from API response if no master list provided
-        if dates_str_list is None:
-            dates_str_list = list(weight_lookup.keys())
-        
-        for date_str in dates_str_list:
-            weight_data = weight_lookup.get(date_str)
+        # 2. Use the lookup's keys as the dates to iterate over
+        for date_str, weight_data in weight_lookup.items():
             if weight_data is not None:
                 try:
                     weight_value = weight_data['weight']
                     body_fat_value = weight_data.get('body_fat')
+                    
                     print(f"  [CACHE_DEBUG] Caching Weight for {date_str}: Weight={weight_value}, Body Fat={body_fat_value}%")
+                    
+                    # 3. Call the cache function with BOTH weight and body_fat
                     cache_manager.set_daily_metrics(date=date_str, weight=float(weight_value), body_fat=float(body_fat_value) if body_fat_value else None)
                     cached_count += 1
+                    
+                    # 4. Verify the write
                     verify_val = cache_manager.get_daily_metrics(date_str)
                     if verify_val and abs(verify_val.get('weight', 0) - float(weight_value)) < 0.1:
-                        print(f"  ✅ [CACHE_VERIFY] Weight cached successfully for {date_str}")
+                        print(f"  ✅ [CACHE_VERIFY] Weight/Fat cached successfully for {date_str}")
                     else:
                         print(f"  ❌ [CACHE_VERIFY] Weight verification FAILED for {date_str}: Expected {weight_value}, Got {verify_val.get('weight') if verify_val else 'NULL'}")
+                
                 except Exception as e:
                     print(f"❌ [CACHE_ERROR] Failed caching Weight for {date_str}: Value={weight_data}, Error={e}")
                     import traceback
@@ -434,32 +439,46 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
     
     elif metric_type == 'spo2':
         spo2_lookup = {}
+        eov_lookup = {}
+        # 1. Build lookup dictionaries FIRST
         for entry in response_data:
             try:
                 if isinstance(entry, dict) and 'dateTime' in entry and 'value' in entry:
+                    date_str = entry['dateTime']
                     if 'avg' in entry['value']:
-                        spo2_lookup[entry['dateTime']] = float(entry['value']['avg'])
-            except (KeyError, ValueError, TypeError):
+                        spo2_lookup[date_str] = float(entry['value']['avg'])
+                    # EOV is in the same entry
+                    eov_val = entry['value'].get("eov") or entry['value'].get("variationScore")
+                    if eov_val is not None:
+                        eov_lookup[date_str] = float(eov_val)
+            except (KeyError, ValueError, TypeError) as e:
+                print(f"  [CACHE_DEBUG] Error parsing SpO2 entry: {entry}, Error: {e}")
                 pass
         
-        # Use dates from API response if no master list provided
-        if dates_str_list is None:
-            dates_str_list = list(spo2_lookup.keys())
+        # 2. Use the spo2_lookup's keys as the dates to iterate over
+        all_spo2_dates = set(spo2_lookup.keys()) | set(eov_lookup.keys())
         
-        for date_str in dates_str_list:
-            spo2_value = spo2_lookup.get(date_str)
-            if spo2_value is not None:
+        for date_str in all_spo2_dates:
+            spo2_value = spo2_lookup.get(date_str)  # Get from lookup
+            eov_value = eov_lookup.get(date_str)     # Get from lookup
+
+            if spo2_value is not None or eov_value is not None:
                 try:
-                    print(f"  [CACHE_DEBUG] Caching SpO2 for {date_str}: Value={spo2_value} (Type: {type(spo2_value).__name__})")
-                    cache_manager.set_daily_metrics(date=date_str, spo2=float(spo2_value))
+                    print(f"  [CACHE_DEBUG] Caching SpO2/EOV for {date_str}: SpO2={spo2_value}, EOV={eov_value}")
+                    
+                    # 3. Call the cache function
+                    cache_manager.set_daily_metrics(date=date_str, spo2=spo2_value, eov=eov_value)
                     cached_count += 1
+                    
+                    # 4. Verify the write
                     verify_val = cache_manager.get_daily_metrics(date_str)
-                    if verify_val and abs(verify_val.get('spo2', 0) - float(spo2_value)) < 0.1:
-                        print(f"  ✅ [CACHE_VERIFY] SpO2 cached successfully for {date_str}")
+                    if verify_val and (verify_val.get('spo2') == spo2_value or verify_val.get('eov') == eov_value):
+                        print(f"  ✅ [CACHE_VERIFY] SpO2/EOV cached successfully for {date_str}")
                     else:
-                        print(f"  ❌ [CACHE_VERIFY] SpO2 verification FAILED for {date_str}: Expected {spo2_value}, Got {verify_val.get('spo2') if verify_val else 'NULL'}")
+                        print(f"  ❌ [CACHE_VERIFY] SpO2/EOV verification FAILED for {date_str}")
+                
                 except Exception as e:
-                    print(f"❌ [CACHE_ERROR] Failed caching SpO2 for {date_str}: Value={spo2_value}, Error={e}")
+                    print(f"❌ [CACHE_ERROR] Failed caching SpO2/EOV for {date_str}: Error={e}")
                     import traceback
                     traceback.print_exc()
     
