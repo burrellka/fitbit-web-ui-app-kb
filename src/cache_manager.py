@@ -66,6 +66,12 @@ class FitbitCache:
             except sqlite3.OperationalError:
                 pass  # Column already exists
             
+            # Add body_fat column to daily_metrics_cache (migration for existing databases)
+            try:
+                cursor.execute('ALTER TABLE daily_metrics_cache ADD COLUMN body_fat REAL')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
             # Advanced metrics table
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS advanced_metrics_cache (
@@ -480,7 +486,7 @@ class FitbitCache:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT resting_heart_rate, steps, weight, spo2, eov, calories, distance, 
+                SELECT resting_heart_rate, steps, weight, body_fat, spo2, eov, calories, distance, 
                        floors, active_zone_minutes, fat_burn_minutes, cardio_minutes, peak_minutes
                 FROM daily_metrics_cache WHERE date = ?
             ''', (date,))
@@ -492,20 +498,21 @@ class FitbitCache:
                     'resting_heart_rate': result[0],
                     'steps': result[1],
                     'weight': result[2],
-                    'spo2': result[3],
-                    'eov': result[4],
-                    'calories': result[5],
-                    'distance': result[6],
-                    'floors': result[7],
-                    'active_zone_minutes': result[8],
-                    'fat_burn_minutes': result[9],
-                    'cardio_minutes': result[10],
-                    'peak_minutes': result[11]
+                    'body_fat': result[3],
+                    'spo2': result[4],
+                    'eov': result[5],
+                    'calories': result[6],
+                    'distance': result[7],
+                    'floors': result[8],
+                    'active_zone_minutes': result[9],
+                    'fat_burn_minutes': result[10],
+                    'cardio_minutes': result[11],
+                    'peak_minutes': result[12]
                 }
             return None
     
     def set_daily_metrics(self, date: str, resting_heart_rate: int = None, steps: int = None,
-                         weight: float = None, spo2: float = None, eov: float = None, calories: int = None,
+                         weight: float = None, body_fat: float = None, spo2: float = None, eov: float = None, calories: int = None,
                          distance: float = None, floors: int = None, active_zone_minutes: int = None,
                          fat_burn_minutes: int = None, cardio_minutes: int = None, peak_minutes: int = None):
         """
@@ -524,6 +531,7 @@ class FitbitCache:
             if peak_minutes is not None: set_clauses.append("peak_minutes = excluded.peak_minutes")
             if steps is not None: set_clauses.append("steps = excluded.steps")
             if weight is not None: set_clauses.append("weight = excluded.weight")
+            if body_fat is not None: set_clauses.append("body_fat = excluded.body_fat")
             if spo2 is not None: set_clauses.append("spo2 = excluded.spo2")
             if eov is not None: set_clauses.append("eov = excluded.eov")
             if calories is not None: set_clauses.append("calories = excluded.calories")
@@ -537,8 +545,8 @@ class FitbitCache:
             # Using COALESCE on the UPDATE ensures we don't overwrite existing data with NULLs
             # For example, if we only provide 'steps', 'rhr' will be preserved if it already exists.
             sql = f"""
-                INSERT INTO daily_metrics_cache (date, resting_heart_rate, fat_burn_minutes, cardio_minutes, peak_minutes, steps, weight, spo2, eov, calories, distance, floors, active_zone_minutes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO daily_metrics_cache (date, resting_heart_rate, fat_burn_minutes, cardio_minutes, peak_minutes, steps, weight, body_fat, spo2, eov, calories, distance, floors, active_zone_minutes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(date) DO UPDATE SET
                     resting_heart_rate = COALESCE(excluded.resting_heart_rate, daily_metrics_cache.resting_heart_rate),
                     fat_burn_minutes = COALESCE(excluded.fat_burn_minutes, daily_metrics_cache.fat_burn_minutes),
@@ -546,6 +554,7 @@ class FitbitCache:
                     peak_minutes = COALESCE(excluded.peak_minutes, daily_metrics_cache.peak_minutes),
                     steps = COALESCE(excluded.steps, daily_metrics_cache.steps),
                     weight = COALESCE(excluded.weight, daily_metrics_cache.weight),
+                    body_fat = COALESCE(excluded.body_fat, daily_metrics_cache.body_fat),
                     spo2 = COALESCE(excluded.spo2, daily_metrics_cache.spo2),
                     eov = COALESCE(excluded.eov, daily_metrics_cache.eov),
                     calories = COALESCE(excluded.calories, daily_metrics_cache.calories),
@@ -554,7 +563,7 @@ class FitbitCache:
                     active_zone_minutes = COALESCE(excluded.active_zone_minutes, daily_metrics_cache.active_zone_minutes);
             """
             
-            cursor.execute(sql, (date, resting_heart_rate, fat_burn_minutes, cardio_minutes, peak_minutes, steps, weight, spo2, eov, calories, distance, floors, active_zone_minutes))
+            cursor.execute(sql, (date, resting_heart_rate, fat_burn_minutes, cardio_minutes, peak_minutes, steps, weight, body_fat, spo2, eov, calories, distance, floors, active_zone_minutes))
             conn.commit()
             conn.close()
     

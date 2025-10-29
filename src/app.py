@@ -404,7 +404,8 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             try:
                 weight_kg = float(entry['weight'])
                 weight_lbs = round(weight_kg * 2.20462, 1)
-                weight_lookup[entry['date']] = weight_lbs
+                body_fat_pct = entry.get('fat')  # Body fat percentage from Fitbit API
+                weight_lookup[entry['date']] = {'weight': weight_lbs, 'body_fat': body_fat_pct}
             except (KeyError, ValueError):
                 pass
         
@@ -413,11 +414,13 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             dates_str_list = list(weight_lookup.keys())
         
         for date_str in dates_str_list:
-            weight_value = weight_lookup.get(date_str)
-            if weight_value is not None:
+            weight_data = weight_lookup.get(date_str)
+            if weight_data is not None:
                 try:
-                    print(f"  [CACHE_DEBUG] Caching Weight for {date_str}: Value={weight_value} (Type: {type(weight_value).__name__})")
-                    cache_manager.set_daily_metrics(date=date_str, weight=float(weight_value))
+                    weight_value = weight_data['weight']
+                    body_fat_value = weight_data.get('body_fat')
+                    print(f"  [CACHE_DEBUG] Caching Weight for {date_str}: Weight={weight_value}, Body Fat={body_fat_value}%")
+                    cache_manager.set_daily_metrics(date=date_str, weight=float(weight_value), body_fat=float(body_fat_value) if body_fat_value else None)
                     cached_count += 1
                     verify_val = cache_manager.get_daily_metrics(date_str)
                     if verify_val and abs(verify_val.get('weight', 0) - float(weight_value)) < 0.1:
@@ -425,7 +428,7 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
                     else:
                         print(f"  ❌ [CACHE_VERIFY] Weight verification FAILED for {date_str}: Expected {weight_value}, Got {verify_val.get('weight') if verify_val else 'NULL'}")
                 except Exception as e:
-                    print(f"❌ [CACHE_ERROR] Failed caching Weight for {date_str}: Value={weight_value}, Error={e}")
+                    print(f"❌ [CACHE_ERROR] Failed caching Weight for {date_str}: Value={weight_data}, Error={e}")
                     import traceback
                     traceback.print_exc()
     
@@ -4929,7 +4932,7 @@ def api_cache_log():
                 cursor.execute('''
                     SELECT steps, calories, distance, floors, active_zone_minutes,
                            resting_heart_rate, fat_burn_minutes, cardio_minutes, peak_minutes,
-                           weight, spo2, eov
+                           weight, body_fat, spo2, eov
                     FROM daily_metrics_cache WHERE date = ?
                 ''', (date,))
                 daily = cursor.fetchone()
@@ -4945,9 +4948,10 @@ def api_cache_log():
                     report_lines.append(f"    Fat Burn Minutes: {daily[6]}")
                     report_lines.append(f"    Cardio Minutes: {daily[7]}")
                     report_lines.append(f"    Peak Minutes: {daily[8]}")
-                    report_lines.append(f"    Weight: {daily[9]}")
-                    report_lines.append(f"    SpO2: {daily[10]}")
-                    report_lines.append(f"    EOV: {daily[11]}")
+                    report_lines.append(f"    Weight: {daily[9]} lbs")
+                    report_lines.append(f"    Body Fat: {daily[10]}%")
+                    report_lines.append(f"    SpO2: {daily[11]}")
+                    report_lines.append(f"    EOV: {daily[12]}")
                 else:
                     report_lines.append("  ❌ No daily metrics found")
             
