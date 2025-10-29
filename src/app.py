@@ -406,7 +406,7 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
                 date_str = entry['date']
                 weight_kg = float(entry['weight'])
                 weight_lbs = round(weight_kg * 2.20462, 1)
-                body_fat_pct = entry.get('fat')
+                body_fat_pct = entry.get('fat') # Get body fat %
                 weight_lookup[date_str] = {'weight': weight_lbs, 'body_fat': body_fat_pct}
             except (KeyError, ValueError, TypeError) as e:
                 print(f"  [CACHE_DEBUG] Error parsing weight entry: {entry}, Error: {e}")
@@ -416,18 +416,24 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
         for date_str, weight_data in weight_lookup.items():
             if weight_data is not None:
                 try:
-                    weight_value = weight_data['weight']
+                    # --- START FIX: Define variables correctly ---
+                    weight_value = weight_data.get('weight')
                     body_fat_value = weight_data.get('body_fat')
+                    # --- END FIX ---
                     
+                    if weight_value is None: # Skip if no weight value
+                        continue
+
                     print(f"  [CACHE_DEBUG] Caching Weight for {date_str}: Weight={weight_value}, Body Fat={body_fat_value}%")
                     
                     # 3. Call the cache function with BOTH weight and body_fat
-                    cache_manager.set_daily_metrics(date=date_str, weight=float(weight_value), body_fat=float(body_fat_value) if body_fat_value else None)
+                    cache_manager.set_daily_metrics(date=date_str, weight=float(weight_value), body_fat=float(body_fat_value) if body_fat_value is not None else None)
                     cached_count += 1
                     
                     # 4. Verify the write
                     verify_val = cache_manager.get_daily_metrics(date_str)
-                    if verify_val and abs(verify_val.get('weight', 0) - float(weight_value)) < 0.1:
+                    # Check if weight is not None and matches
+                    if verify_val and verify_val.get('weight') is not None and abs(verify_val.get('weight', 0) - float(weight_value)) < 0.1:
                         print(f"  ✅ [CACHE_VERIFY] Weight/Fat cached successfully for {date_str}")
                     else:
                         print(f"  ❌ [CACHE_VERIFY] Weight verification FAILED for {date_str}: Expected {weight_value}, Got {verify_val.get('weight') if verify_val else 'NULL'}")
