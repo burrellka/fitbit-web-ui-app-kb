@@ -1653,6 +1653,16 @@ app.layout = html.Div(children=[
         ),
         html.Div(id='weight_table', style={'max-width': '1200px', 'margin': 'auto', 'font-weight': 'bold'}, children=[]),
         html.Div(style={"height": '40px'}),
+        
+        html.H4("Body Fat % 💪", style={'font-weight': 'bold'}),
+        html.H6("Body fat percentage is tracked by Fitbit smart scales (Aria family) and provides insight into body composition beyond just weight. Monitoring body fat % can help track fitness progress and overall health."),
+        dcc.Graph(
+            id='graph_body_fat',
+            figure=px.line(),
+            config= {'displaylogo': False}
+        ),
+        html.Div(id='body_fat_table', style={'max-width': '1200px', 'margin': 'auto', 'font-weight': 'bold'}, children=[]),
+        html.Div(style={"height": '40px'}),
         html.H4("SpO2 🩸", style={'font-weight': 'bold'}),
         html.H6("A pulse oximeter reading indicates what percentage of your blood is saturated, known as the SpO2 level. A typical, healthy reading is 95–100% . If your SpO2 level is less than 92%, a doctor may recommend you get an ABG. A pulse ox is the most common type of test because it's noninvasive and provides quick readings."),
         dcc.Graph(
@@ -3011,7 +3021,7 @@ def disable_button_and_calculate(n_clicks, oauth_token, refresh_token, token_exp
     return False, True, True
 
 # Fetch data and update graphs on click of submit
-@app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_eov', 'figure'), Output('eov_table', 'children'), Output('graph_sleep', 'figure'), Output('sleep_data_table', 'children'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise-type-filter', 'options'), Output('exercise_log_table', 'children'), Output('workout-date-selector', 'options'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('sleep-date-selector', 'options'), Output('graph_exercise_sleep_correlation', 'figure'), Output('graph_azm_sleep_correlation', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
+@app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_body_fat', 'figure'), Output('body_fat_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_eov', 'figure'), Output('eov_table', 'children'), Output('graph_sleep', 'figure'), Output('sleep_data_table', 'children'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise-type-filter', 'options'), Output('exercise_log_table', 'children'), Output('workout-date-selector', 'options'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('sleep-date-selector', 'options'), Output('graph_exercise_sleep_correlation', 'figure'), Output('graph_azm_sleep_correlation', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
 Input('submit-button', 'n_clicks'),
 State('my-date-picker-range', 'start_date'), State('my-date-picker-range', 'end_date'), State('oauth-token', 'data'),
 prevent_initial_call=True)
@@ -3042,6 +3052,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     peak_minutes_list = []
     steps_list = []
     weight_list = []
+    body_fat_list = []
     spo2_list = []
     eov_list = []
     calories_list = []
@@ -3109,6 +3120,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                 # Steps, weight, SpO2
                 steps_list.append(daily_metrics.get('steps'))
                 weight_list.append(daily_metrics.get('weight'))
+                body_fat_list.append(daily_metrics.get('body_fat'))
                 spo2_list.append(daily_metrics.get('spo2'))
                 
                 # Calories, distance, floors, AZM
@@ -3124,6 +3136,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                 peak_minutes_list.append(None)
                 steps_list.append(None)
                 weight_list.append(None)
+                body_fat_list.append(None)
                 spo2_list.append(None)
                 calories_list.append(None)
                 distance_list.append(None)
@@ -3765,6 +3778,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     "Cardio Minutes": cardio_minutes_list,
     "Peak Minutes": peak_minutes_list,
     "weight": weight_list,
+    "body_fat": body_fat_list,
     "SPO2": spo2_list,
     "EOV": eov_list,
     "Deep Sleep Minutes": deep_sleep_list,
@@ -3832,13 +3846,52 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     cardio_summary_table = dash_table.DataTable(cardio_summary_df.to_dict('records'), [{"name": i, "id": i} for i in cardio_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#ef553b','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
     peak_summary_df = calculate_table_data(df_merged, "Peak Minutes")
     peak_summary_table = dash_table.DataTable(peak_summary_df.to_dict('records'), [{"name": i, "id": i} for i in peak_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#00cc96','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
-    fig_weight = px.line(df_merged, x="Date", y="weight", line_shape="spline", color_discrete_sequence=["#6b3908"], title=f"<b>Weight<br><br><sup>Overall average : {weight_avg['overall']} lbs | Last 30d average : {weight_avg['30d']} lbs</sup></b><br><br><br>", labels={"weight": "Weight (lbs)"})
+    # Get most recent weight and body fat for summary header
+    recent_weight_df = df_merged[df_merged["weight"].notna()].sort_values("Date", ascending=False)
+    if not recent_weight_df.empty:
+        most_recent_weight = recent_weight_df.iloc[0]["weight"]
+        most_recent_date = recent_weight_df.iloc[0]["Date"].strftime("%m/%d/%Y")
+        most_recent_body_fat = recent_weight_df.iloc[0]["body_fat"] if pd.notna(recent_weight_df.iloc[0]["body_fat"]) else "N/A"
+        weight_header_text = f"<b>Weight<br><br><sup>📊 Most Recent: {most_recent_weight} lbs on {most_recent_date} | Body Fat: {most_recent_body_fat}%<br>Overall avg: {weight_avg['overall']} lbs | Last 30d avg: {weight_avg['30d']} lbs</sup></b><br><br>"
+    else:
+        weight_header_text = f"<b>Weight<br><br><sup>Overall average : {weight_avg['overall']} lbs | Last 30d average : {weight_avg['30d']} lbs</sup></b><br><br><br>"
+    
+    fig_weight = px.line(df_merged, x="Date", y="weight", line_shape="spline", color_discrete_sequence=["#6b3908"], title=weight_header_text, labels={"weight": "Weight (lbs)"})
     if df_merged["weight"].dtype != object:
         fig_weight.add_annotation(x=df_merged.iloc[df_merged["weight"].idxmax()]["Date"], y=df_merged["weight"].max(), text=str(df_merged["weight"].max()) + " lbs", showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
         fig_weight.add_annotation(x=df_merged.iloc[df_merged["weight"].idxmin()]["Date"], y=df_merged["weight"].min(), text=str(df_merged["weight"].min()) + " lbs", showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
     fig_weight.add_hline(y=round(df_merged["weight"].mean(),1), line_dash="dot",annotation_text="Average : " + str(round(df_merged["weight"].mean(), 1)) + " lbs", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
     weight_summary_df = calculate_table_data(df_merged, "weight")
     weight_summary_table = dash_table.DataTable(weight_summary_df.to_dict('records'), [{"name": i, "id": i} for i in weight_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#4c3b7d','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
+    
+    # Body Fat % Chart
+    body_fat_avg = {'overall': safe_avg(df_merged["body_fat"].mean(), 1), '30d': safe_avg(df_merged["body_fat"].tail(30).mean(), 1)}
+    if df_merged["body_fat"].notna().any() and df_merged["body_fat"].sum() > 0:
+        fig_body_fat = px.line(df_merged, x="Date", y="body_fat", line_shape="spline", color_discrete_sequence=["#2c3e50"], 
+                              title=f"<b>Body Fat %<br><br><sup>Overall average : {body_fat_avg['overall']}% | Last 30d average : {body_fat_avg['30d']}%</sup></b><br><br><br>", 
+                              labels={"body_fat": "Body Fat (%)"})
+        if df_merged["body_fat"].dtype != object and df_merged["body_fat"].notna().any():
+            valid_body_fat = df_merged[df_merged["body_fat"].notna()]
+            fig_body_fat.add_annotation(x=valid_body_fat.iloc[valid_body_fat["body_fat"].idxmax()]["Date"], 
+                                       y=df_merged["body_fat"].max(), text=str(round(df_merged["body_fat"].max(), 1)) + "%", 
+                                       showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, 
+                                       font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
+            fig_body_fat.add_annotation(x=valid_body_fat.iloc[valid_body_fat["body_fat"].idxmin()]["Date"], 
+                                       y=df_merged["body_fat"].min(), text=str(round(df_merged["body_fat"].min(), 1)) + "%", 
+                                       showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, 
+                                       font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
+            fig_body_fat.add_hline(y=df_merged["body_fat"].mean(), line_dash="dot",
+                                  annotation_text="Average : " + str(safe_avg(df_merged["body_fat"].mean(), 1)) + "%", 
+                                  annotation_position="bottom right", annotation_bgcolor="#2c3e50", annotation_opacity=0.6, 
+                                  annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
+        body_fat_summary_df = calculate_table_data(df_merged, "body_fat")
+        body_fat_summary_table = dash_table.DataTable(body_fat_summary_df.to_dict('records'), [{"name": i, "id": i} for i in body_fat_summary_df.columns], 
+                                                     style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], 
+                                                     style_header={'backgroundColor': '#34495e','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, 
+                                                     style_cell={'textAlign': 'center'})
+    else:
+        fig_body_fat = {}
+        body_fat_summary_table = html.P("No body fat % data available", style={'text-align': 'center', 'color': '#888'})
     fig_spo2 = px.scatter(df_merged, x="Date", y="SPO2", color_discrete_sequence=["#983faa"], title=f"<b>SPO2 Percentage<br><br><sup>Overall average : {spo2_avg['overall']}% | Last 30d average : {spo2_avg['30d']}% </sup></b><br><br><br>", range_y=(90,100), labels={'SPO2':"SpO2(%)"})
     if df_merged["SPO2"].dtype != object:
         fig_spo2.add_annotation(x=df_merged.iloc[df_merged["SPO2"].idxmax()]["Date"], y=df_merged["SPO2"].max(), text=str(df_merged["SPO2"].max())+"%", showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
@@ -4394,7 +4447,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     # 🐞 FIX: Serialize the collected activity data to JSON for the dcc.Store
     exercise_data_json = json.dumps(activities_by_date)
 
-    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_spo2, spo2_summary_table, fig_eov, eov_summary_table, fig_sleep_minutes, sleep_data_table_output, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_filter_options, exercise_log_table, workout_dates_for_dropdown, fig_sleep_score, fig_sleep_stages_pie, sleep_dates_for_dropdown, fig_correlation, fig_azm_sleep_correlation, correlation_insights, ""
+    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_body_fat, body_fat_summary_table, fig_spo2, spo2_summary_table, fig_eov, eov_summary_table, fig_sleep_minutes, sleep_data_table_output, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_filter_options, exercise_log_table, workout_dates_for_dropdown, fig_sleep_score, fig_sleep_stages_pie, sleep_dates_for_dropdown, fig_correlation, fig_azm_sleep_correlation, correlation_insights, ""
 
 # ========================================
 # REST API Endpoints for MCP Server Integration
