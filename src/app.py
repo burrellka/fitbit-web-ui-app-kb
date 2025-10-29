@@ -3871,13 +3871,16 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     cardio_summary_table = dash_table.DataTable(cardio_summary_df.to_dict('records'), [{"name": i, "id": i} for i in cardio_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#ef553b','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
     peak_summary_df = calculate_table_data(df_merged, "Peak Minutes")
     peak_summary_table = dash_table.DataTable(peak_summary_df.to_dict('records'), [{"name": i, "id": i} for i in peak_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#00cc96','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
-    # Get most recent weight and body fat for summary header
-    recent_weight_df = df_merged[df_merged["weight"].notna()].sort_values("Date", ascending=False)
-    if not recent_weight_df.empty:
-        most_recent_weight = recent_weight_df.iloc[0]["weight"]
-        most_recent_date = recent_weight_df.iloc[0]["Date"].strftime("%m/%d/%Y")
-        most_recent_body_fat = recent_weight_df.iloc[0]["body_fat"] if pd.notna(recent_weight_df.iloc[0]["body_fat"]) else "N/A"
-        weight_header_text = f"<b>Weight<br><br><sup>📊 Most Recent: {most_recent_weight} lbs on {most_recent_date} | Body Fat: {most_recent_body_fat}%<br>Overall avg: {weight_avg['overall']} lbs | Last 30d avg: {weight_avg['30d']} lbs</sup></b><br><br>"
+    # Get most recent and earliest weight for summary header
+    weight_with_data = df_merged[df_merged["weight"].notna()].sort_values("Date", ascending=False)
+    if not weight_with_data.empty:
+        most_recent_weight = weight_with_data.iloc[0]["weight"]
+        most_recent_date = weight_with_data.iloc[0]["Date"].strftime("%m/%d")
+        earliest_weight = weight_with_data.iloc[-1]["weight"]
+        earliest_date = weight_with_data.iloc[-1]["Date"].strftime("%m/%d")
+        weight_change = round(most_recent_weight - earliest_weight, 1)
+        change_symbol = "📉" if weight_change < 0 else "📈" if weight_change > 0 else "➡️"
+        weight_header_text = f"<b>Weight<br><br><sup>📊 Most Recent: {most_recent_weight} lbs ({most_recent_date}) | Earliest: {earliest_weight} lbs ({earliest_date}) | Change: {change_symbol} {weight_change:+.1f} lbs<br>Overall avg: {weight_avg['overall']} lbs | Last 30d avg: {weight_avg['30d']} lbs</sup></b><br><br>"
     else:
         weight_header_text = f"<b>Weight<br><br><sup>Overall average : {weight_avg['overall']} lbs | Last 30d average : {weight_avg['30d']} lbs</sup></b><br><br><br>"
     
@@ -3892,8 +3895,21 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     # Body Fat % Chart
     body_fat_avg = {'overall': safe_avg(df_merged["body_fat"].mean(), 1), '30d': safe_avg(df_merged["body_fat"].tail(30).mean(), 1)}
     if df_merged["body_fat"].notna().any() and df_merged["body_fat"].sum() > 0:
+        # Get most recent and earliest body fat for summary header
+        body_fat_with_data = df_merged[df_merged["body_fat"].notna()].sort_values("Date", ascending=False)
+        if not body_fat_with_data.empty:
+            most_recent_bf = body_fat_with_data.iloc[0]["body_fat"]
+            most_recent_bf_date = body_fat_with_data.iloc[0]["Date"].strftime("%m/%d")
+            earliest_bf = body_fat_with_data.iloc[-1]["body_fat"]
+            earliest_bf_date = body_fat_with_data.iloc[-1]["Date"].strftime("%m/%d")
+            bf_change = round(most_recent_bf - earliest_bf, 1)
+            bf_change_symbol = "📉" if bf_change < 0 else "📈" if bf_change > 0 else "➡️"
+            body_fat_header_text = f"<b>Body Fat %<br><br><sup>💪 Most Recent: {most_recent_bf}% ({most_recent_bf_date}) | Earliest: {earliest_bf}% ({earliest_bf_date}) | Change: {bf_change_symbol} {bf_change:+.1f}%<br>Overall avg: {body_fat_avg['overall']}% | Last 30d avg: {body_fat_avg['30d']}%</sup></b><br><br>"
+        else:
+            body_fat_header_text = f"<b>Body Fat %<br><br><sup>Overall average : {body_fat_avg['overall']}% | Last 30d average : {body_fat_avg['30d']}%</sup></b><br><br><br>"
+        
         fig_body_fat = px.line(df_merged, x="Date", y="body_fat", line_shape="spline", color_discrete_sequence=["#2c3e50"], 
-                              title=f"<b>Body Fat %<br><br><sup>Overall average : {body_fat_avg['overall']}% | Last 30d average : {body_fat_avg['30d']}%</sup></b><br><br><br>", 
+                              title=body_fat_header_text, 
                               labels={"body_fat": "Body Fat (%)"})
         if df_merged["body_fat"].dtype != object and df_merged["body_fat"].notna().any():
             valid_body_fat = df_merged[df_merged["body_fat"].notna()]
