@@ -402,14 +402,13 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
         weight_lookup = {}
         # 1. Build the lookup dictionary FIRST
         
-        # 🐞 FIX: Use 'body-weight' key, not 'weight'
-        for entry in response_data.get('body-weight', []):
+        # CORRECT KEYS per actual API testing: 'weight' and 'date'
+        for entry in response_data.get('weight', []):
             try:
-                # 🐞 FIX: Use 'dateTime' key, not 'date'
-                date_str = entry['dateTime']
+                date_str = entry['date']  # API uses 'date' not 'dateTime'
                 weight_kg = float(entry['weight'])
                 weight_lbs = round(weight_kg * 2.20462, 1)
-                body_fat_pct = entry.get('fat') # 'fat' key is correct
+                body_fat_pct = entry.get('fat')  # 'fat' key is correct
                 
                 weight_lookup[date_str] = {'weight': weight_lbs, 'body_fat': body_fat_pct}
             except (KeyError, ValueError, TypeError) as e:
