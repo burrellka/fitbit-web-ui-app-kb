@@ -196,15 +196,15 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             
             if steps_value is not None:
                 try:
-                    print(f"  [CACHE_DEBUG] Caching Steps for {date_str}: Value={steps_value} (Type: {type(steps_value).__name__})")
+                    # print(f"  [CACHE_DEBUG] Caching Steps for {date_str}: Value={steps_value} (Type: {type(steps_value).__name__})")
                     cache_manager.set_daily_metrics(date=date_str, steps=steps_value)
                     cached_count += 1
-                    # Verify immediately
-                    verify_val = cache_manager.get_daily_metrics(date_str)
-                    if verify_val and verify_val.get('steps') == steps_value:
-                        print(f"  ✅ [CACHE_VERIFY] Steps cached successfully for {date_str}")
-                    else:
-                        print(f"  ❌ [CACHE_VERIFY] Steps verification FAILED for {date_str}: Expected {steps_value}, Got {verify_val.get('steps') if verify_val else 'NULL'}")
+                    # Verify immediately (disabled - too verbose)
+                    # verify_val = cache_manager.get_daily_metrics(date_str)
+                    # if verify_val and verify_val.get('steps') == steps_value:
+                    #     print(f"  ✅ [CACHE_VERIFY] Steps cached successfully for {date_str}")
+                    # else:
+                    #     print(f"  ❌ [CACHE_VERIFY] Steps verification FAILED for {date_str}: Expected {steps_value}, Got {verify_val.get('steps') if verify_val else 'NULL'}")
                 except Exception as e:
                     print(f"❌ [CACHE_ERROR] Failed caching Steps for {date_str}: Value={steps_value}, Error={e}")
                     import traceback
@@ -229,15 +229,15 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             calories_value = calories_lookup.get(date_str)
             if calories_value is not None:
                 try:
-                    print(f"  [CACHE_DEBUG] Caching Calories for {date_str}: Value={calories_value} (Type: {type(calories_value).__name__})")
+                    # print(f"  [CACHE_DEBUG] Caching Calories for {date_str}: Value={calories_value} (Type: {type(calories_value).__name__})")
                     cache_manager.set_daily_metrics(date=date_str, calories=int(calories_value))
                     cached_count += 1
-                    # Verify immediately
-                    verify_val = cache_manager.get_daily_metrics(date_str)
-                    if verify_val and verify_val.get('calories') == int(calories_value):
-                        print(f"  ✅ [CACHE_VERIFY] Calories cached successfully for {date_str}")
-                    else:
-                        print(f"  ❌ [CACHE_VERIFY] Calories verification FAILED for {date_str}: Expected {calories_value}, Got {verify_val.get('calories') if verify_val else 'NULL'}")
+                    # Verify immediately (disabled - too verbose)
+                    # verify_val = cache_manager.get_daily_metrics(date_str)
+                    # if verify_val and verify_val.get('calories') == int(calories_value):
+                    #     print(f"  ✅ [CACHE_VERIFY] Calories cached successfully for {date_str}")
+                    # else:
+                    #     print(f"  ❌ [CACHE_VERIFY] Calories verification FAILED for {date_str}: Expected {calories_value}, Got {verify_val.get('calories') if verify_val else 'NULL'}")
                 except Exception as e:
                     print(f"❌ [CACHE_ERROR] Failed caching Calories for {date_str}: Value={calories_value}, Error={e}")
                     import traceback
@@ -261,14 +261,14 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             distance_value = distance_lookup.get(date_str)
             if distance_value is not None:
                 try:
-                    print(f"  [CACHE_DEBUG] Caching Distance for {date_str}: Value={distance_value} (Type: {type(distance_value).__name__})")
+                    # print(f"  [CACHE_DEBUG] Caching Distance for {date_str}: Value={distance_value} (Type: {type(distance_value).__name__})")
                     cache_manager.set_daily_metrics(date=date_str, distance=float(distance_value))
                     cached_count += 1
-                    verify_val = cache_manager.get_daily_metrics(date_str)
-                    if verify_val and abs(verify_val.get('distance', 0) - float(distance_value)) < 0.01:
-                        print(f"  ✅ [CACHE_VERIFY] Distance cached successfully for {date_str}")
-                    else:
-                        print(f"  ❌ [CACHE_VERIFY] Distance verification FAILED for {date_str}: Expected {distance_value}, Got {verify_val.get('distance') if verify_val else 'NULL'}")
+                    # verify_val = cache_manager.get_daily_metrics(date_str)
+                    # if verify_val and abs(verify_val.get('distance', 0) - float(distance_value)) < 0.01:
+                    #     print(f"  ✅ [CACHE_VERIFY] Distance cached successfully for {date_str}")
+                    # else:
+                    #     print(f"  ❌ [CACHE_VERIFY] Distance verification FAILED for {date_str}: Expected {distance_value}, Got {verify_val.get('distance') if verify_val else 'NULL'}")
                 except Exception as e:
                     print(f"❌ [CACHE_ERROR] Failed caching Distance for {date_str}: Value={distance_value}, Error={e}")
                     import traceback
@@ -290,14 +290,14 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             floors_value = floors_lookup.get(date_str)
             if floors_value is not None:
                 try:
-                    print(f"  [CACHE_DEBUG] Caching Floors for {date_str}: Value={floors_value} (Type: {type(floors_value).__name__})")
+                    # print(f"  [CACHE_DEBUG] Caching Floors for {date_str}: Value={floors_value} (Type: {type(floors_value).__name__})")
                     cache_manager.set_daily_metrics(date=date_str, floors=int(floors_value))
                     cached_count += 1
-                    verify_val = cache_manager.get_daily_metrics(date_str)
-                    if verify_val and verify_val.get('floors') == int(floors_value):
-                        print(f"  ✅ [CACHE_VERIFY] Floors cached successfully for {date_str}")
-                    else:
-                        print(f"  ❌ [CACHE_VERIFY] Floors verification FAILED for {date_str}: Expected {floors_value}, Got {verify_val.get('floors') if verify_val else 'NULL'}")
+                    # verify_val = cache_manager.get_daily_metrics(date_str)
+                    # if verify_val and verify_val.get('floors') == int(floors_value):
+                    #     print(f"  ✅ [CACHE_VERIFY] Floors cached successfully for {date_str}")
+                    # else:
+                    #     print(f"  ❌ [CACHE_VERIFY] Floors verification FAILED for {date_str}: Expected {floors_value}, Got {verify_val.get('floors') if verify_val else 'NULL'}")
                 except Exception as e:
                     print(f"❌ [CACHE_ERROR] Failed caching Floors for {date_str}: Value={floors_value}, Error={e}")
                     import traceback
@@ -319,14 +319,14 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
             azm_value = azm_lookup.get(date_str)
             if azm_value is not None:
                 try:
-                    print(f"  [CACHE_DEBUG] Caching AZM for {date_str}: Value={azm_value} (Type: {type(azm_value).__name__})")
+                    # print(f"  [CACHE_DEBUG] Caching AZM for {date_str}: Value={azm_value} (Type: {type(azm_value).__name__})")
                     cache_manager.set_daily_metrics(date=date_str, active_zone_minutes=int(azm_value))
                     cached_count += 1
-                    verify_val = cache_manager.get_daily_metrics(date_str)
-                    if verify_val and verify_val.get('active_zone_minutes') == int(azm_value):
-                        print(f"  ✅ [CACHE_VERIFY] AZM cached successfully for {date_str}")
-                    else:
-                        print(f"  ❌ [CACHE_VERIFY] AZM verification FAILED for {date_str}: Expected {azm_value}, Got {verify_val.get('active_zone_minutes') if verify_val else 'NULL'}")
+                    # verify_val = cache_manager.get_daily_metrics(date_str)
+                    # if verify_val and verify_val.get('active_zone_minutes') == int(azm_value):
+                    #     print(f"  ✅ [CACHE_VERIFY] AZM cached successfully for {date_str}")
+                    # else:
+                    #     print(f"  ❌ [CACHE_VERIFY] AZM verification FAILED for {date_str}: Expected {azm_value}, Got {verify_val.get('active_zone_minutes') if verify_val else 'NULL'}")
                 except Exception as e:
                     print(f"❌ [CACHE_ERROR] Failed caching AZM for {date_str}: Value={azm_value}, Error={e}")
                     import traceback
@@ -369,7 +369,7 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
                     fat_burn = hr_data.get('fat_burn')
                     cardio = hr_data.get('cardio')
                     peak = hr_data.get('peak')
-                    print(f"  [CACHE_DEBUG] Caching HR for {date_str}: RHR={rhr}, FatBurn={fat_burn}, Cardio={cardio}, Peak={peak}")
+                    # print(f"  [CACHE_DEBUG] Caching HR for {date_str}: RHR={rhr}, FatBurn={fat_burn}, Cardio={cardio}, Peak={peak}")
                     cache_manager.set_daily_metrics(
                         date=date_str, 
                         resting_heart_rate=rhr,
@@ -378,21 +378,21 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
                         peak_minutes=peak
                     )
                     cached_count += 1
-                    # Verify immediately
-                    verify_val = cache_manager.get_daily_metrics(date_str)
-                    if verify_val:
-                        v_rhr = verify_val.get('resting_heart_rate')
-                        v_fb = verify_val.get('fat_burn_minutes')
-                        v_cardio = verify_val.get('cardio_minutes')
-                        v_peak = verify_val.get('peak_minutes')
-                        if v_rhr == rhr and v_fb == fat_burn and v_cardio == cardio and v_peak == peak:
-                            print(f"  ✅ [CACHE_VERIFY] HR cached successfully for {date_str}")
-                        else:
-                            print(f"  ❌ [CACHE_VERIFY] HR verification FAILED for {date_str}:")
-                            print(f"     Expected: RHR={rhr}, FB={fat_burn}, Cardio={cardio}, Peak={peak}")
-                            print(f"     Got:      RHR={v_rhr}, FB={v_fb}, Cardio={v_cardio}, Peak={v_peak}")
-                    else:
-                        print(f"  ❌ [CACHE_VERIFY] HR verification FAILED for {date_str}: No data returned")
+                    # Verify immediately (disabled - too verbose)
+                    # verify_val = cache_manager.get_daily_metrics(date_str)
+                    # if verify_val:
+                    #     v_rhr = verify_val.get('resting_heart_rate')
+                    #     v_fb = verify_val.get('fat_burn_minutes')
+                    #     v_cardio = verify_val.get('cardio_minutes')
+                    #     v_peak = verify_val.get('peak_minutes')
+                    #     if v_rhr == rhr and v_fb == fat_burn and v_cardio == cardio and v_peak == peak:
+                    #         print(f"  ✅ [CACHE_VERIFY] HR cached successfully for {date_str}")
+                    #     else:
+                    #         print(f"  ❌ [CACHE_VERIFY] HR verification FAILED for {date_str}:")
+                    #         print(f"     Expected: RHR={rhr}, FB={fat_burn}, Cardio={cardio}, Peak={peak}")
+                    #         print(f"     Got:      RHR={v_rhr}, FB={v_fb}, Cardio={v_cardio}, Peak={v_peak}")
+                    # else:
+                    #     print(f"  ❌ [CACHE_VERIFY] HR verification FAILED for {date_str}: No data returned")
                 except Exception as e:
                     print(f"❌ [CACHE_ERROR] Failed caching HR for {date_str}: {e}")
                     import traceback
@@ -426,18 +426,18 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
                     
                     if weight_value is None: # Skip if no weight value
                         continue
-                    print(f"  [CACHE_DEBUG] Caching Weight for {date_str}: Weight={weight_value}, Body Fat={body_fat_value}%")
+                    # print(f"  [CACHE_DEBUG] Caching Weight for {date_str}: Weight={weight_value}, Body Fat={body_fat_value}%")
                     
                     # 3. Call the cache function with BOTH weight and body_fat
                     cache_manager.set_daily_metrics(date=date_str, weight=float(weight_value), body_fat=float(body_fat_value) if body_fat_value is not None else None)
                     cached_count += 1
                     
-                    # 4. Verify the write
-                    verify_val = cache_manager.get_daily_metrics(date_str)
-                    if verify_val and verify_val.get('weight') is not None and abs(verify_val.get('weight', 0) - float(weight_value)) < 0.1:
-                        print(f"  ✅ [CACHE_VERIFY] Weight/Fat cached successfully for {date_str}")
-                    else:
-                        print(f"  ❌ [CACHE_VERIFY] Weight verification FAILED for {date_str}: Expected {weight_value}, Got {verify_val.get('weight') if verify_val else 'NULL'}")
+                    # 4. Verify the write (disabled - too verbose)
+                    # verify_val = cache_manager.get_daily_metrics(date_str)
+                    # if verify_val and verify_val.get('weight') is not None and abs(verify_val.get('weight', 0) - float(weight_value)) < 0.1:
+                    #     print(f"  ✅ [CACHE_VERIFY] Weight/Fat cached successfully for {date_str}")
+                    # else:
+                    #     print(f"  ❌ [CACHE_VERIFY] Weight verification FAILED for {date_str}: Expected {weight_value}, Got {verify_val.get('weight') if verify_val else 'NULL'}")
                 
                 except Exception as e:
                     print(f"❌ [CACHE_ERROR] Failed caching Weight for {date_str}: Value={weight_data}, Error={e}")
@@ -471,18 +471,18 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
 
             if spo2_value is not None or eov_value is not None:
                 try:
-                    print(f"  [CACHE_DEBUG] Caching SpO2/EOV for {date_str}: SpO2={spo2_value}, EOV={eov_value}")
+                    # print(f"  [CACHE_DEBUG] Caching SpO2/EOV for {date_str}: SpO2={spo2_value}, EOV={eov_value}")
                     
                     # 3. Call the cache function
                     cache_manager.set_daily_metrics(date=date_str, spo2=spo2_value, eov=eov_value)
                     cached_count += 1
                     
-                    # 4. Verify the write
-                    verify_val = cache_manager.get_daily_metrics(date_str)
-                    if verify_val and (verify_val.get('spo2') == spo2_value or verify_val.get('eov') == eov_value):
-                        print(f"  ✅ [CACHE_VERIFY] SpO2/EOV cached successfully for {date_str}")
-                    else:
-                        print(f"  ❌ [CACHE_VERIFY] SpO2/EOV verification FAILED for {date_str}")
+                    # 4. Verify the write (disabled - too verbose)
+                    # verify_val = cache_manager.get_daily_metrics(date_str)
+                    # if verify_val and (verify_val.get('spo2') == spo2_value or verify_val.get('eov') == eov_value):
+                    #     print(f"  ✅ [CACHE_VERIFY] SpO2/EOV cached successfully for {date_str}")
+                    # else:
+                    #     print(f"  ❌ [CACHE_VERIFY] SpO2/EOV verification FAILED for {date_str}")
                 
                 except Exception as e:
                     print(f"❌ [CACHE_ERROR] Failed caching SpO2/EOV for {date_str}: Error={e}")
