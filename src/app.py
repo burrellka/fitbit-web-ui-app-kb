@@ -4902,6 +4902,7 @@ def cache_log_page():
                 <div style="margin-top: 20px;">
                     <button onclick="generateReport()">🔍 Generate Report</button>
                     <button class="secondary" onclick="downloadReport()">💾 Download as Text</button>
+                    <button class="secondary" onclick="downloadCSV()" style="background: #17a2b8;">📊 Export CSV</button>
                     <button class="tertiary" onclick="clearOutput()">🗑️ Clear Output</button>
                 </div>
             </div>
@@ -4978,6 +4979,47 @@ def cache_log_page():
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
+            }
+            
+            async function downloadCSV() {
+                const startDate = document.getElementById('startDate').value;
+                const endDate = document.getElementById('endDate').value;
+                
+                if (!startDate || !endDate) {
+                    alert('❌ Please select both start and end dates');
+                    return;
+                }
+                
+                // Get selected metrics
+                const metrics = [];
+                document.querySelectorAll('.metric-checkbox input[type="checkbox"]:checked').forEach(cb => {
+                    metrics.push(cb.value);
+                });
+                
+                if (metrics.length === 0) {
+                    alert('❌ Please select at least one metric');
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`/api/cache-csv?start=${startDate}&end=${endDate}&metrics=${metrics.join(',')}`);
+                    
+                    if (!response.ok) {
+                        throw new Error('Failed to generate CSV');
+                    }
+                    
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `fitbit-cache-export-${new Date().toISOString().split('T')[0]}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                } catch (error) {
+                    alert(`❌ Error: ${error.message}`);
+                }
             }
             
             function clearOutput() {
@@ -5134,6 +5176,156 @@ def api_cache_log():
             'success': False,
             'error': str(e)
         })
+
+@server.route('/api/cache-csv')
+def api_cache_csv():
+    """API endpoint to export cache data as CSV"""
+    from flask import Response
+    import io
+    import csv
+    
+    start_date = request.args.get('start')
+    end_date = request.args.get('end')
+    metrics_str = request.args.get('metrics', 'daily,sleep,advanced,cardio,activities')
+    
+    if not start_date or not end_date:
+        return Response('Missing date parameters', status=400)
+    
+    selected_metrics = set(metrics_str.split(','))
+    
+    try:
+        conn = sqlite3.connect(cache.db_path)
+        cursor = conn.cursor()
+        
+        # Generate date range
+        from datetime import datetime, timedelta
+        start = datetime.strptime(start_date, '%Y-%m-%d')
+        end = datetime.strptime(end_date, '%Y-%m-%d')
+        dates = [(start + timedelta(days=x)).strftime('%Y-%m-%d') 
+                 for x in range((end - start).days + 1)]
+        
+        # Create CSV in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Build header row based on selected metrics
+        header = ['Date']
+        
+        if 'daily' in selected_metrics:
+            header.extend(['Steps', 'Calories', 'Distance (mi)', 'Floors', 'Active Zone Min', 
+                          'Resting HR', 'Fat Burn Min', 'Cardio Min', 'Peak Min',
+                          'Weight (lbs)', 'Body Fat %', 'SpO2', 'EOV'])
+        
+        if 'sleep' in selected_metrics:
+            header.extend(['Sleep Reality Score', 'Sleep Proxy Score', 'Sleep Efficiency %',
+                          'Deep Sleep (min)', 'Light Sleep (min)', 'REM Sleep (min)', 
+                          'Wake Time (min)', 'Total Sleep (min)'])
+        
+        if 'advanced' in selected_metrics:
+            header.extend(['HRV (ms)', 'Breathing Rate (bpm)', 'Temperature (°F)'])
+        
+        if 'cardio' in selected_metrics:
+            header.extend(['VO2 Max'])
+        
+        if 'activities' in selected_metrics:
+            header.extend(['Activities Count', 'Activities Summary'])
+        
+        writer.writerow(header)
+        
+        # Write data rows
+        for date in dates:
+            row = [date]
+            
+            # Daily Metrics
+            if 'daily' in selected_metrics:
+                cursor.execute('''
+                    SELECT steps, calories, distance, floors, active_zone_minutes,
+                           resting_heart_rate, fat_burn_minutes, cardio_minutes, peak_minutes,
+                           weight, body_fat, spo2, eov
+                    FROM daily_metrics_cache WHERE date = ?
+                ''', (date,))
+                daily = cursor.fetchone()
+                
+                if daily:
+                    row.extend([daily[0] or '', daily[1] or '', daily[2] or '', daily[3] or '', daily[4] or '',
+                               daily[5] or '', daily[6] or '', daily[7] or '', daily[8] or '',
+                               daily[9] or '', daily[10] or '', daily[11] or '', daily[12] or ''])
+                else:
+                    row.extend([''] * 13)
+            
+            # Sleep Data
+            if 'sleep' in selected_metrics:
+                cursor.execute('''
+                    SELECT reality_score, proxy_score, efficiency, 
+                           deep_minutes, light_minutes, rem_minutes, wake_minutes, total_sleep
+                    FROM sleep_cache WHERE date = ?
+                ''', (date,))
+                sleep = cursor.fetchone()
+                
+                if sleep:
+                    row.extend([sleep[0] or '', sleep[1] or '', sleep[2] or '',
+                               sleep[3] or '', sleep[4] or '', sleep[5] or '', 
+                               sleep[6] or '', sleep[7] or ''])
+                else:
+                    row.extend([''] * 8)
+            
+            # Advanced Metrics
+            if 'advanced' in selected_metrics:
+                cursor.execute('''
+                    SELECT hrv, breathing_rate, temperature
+                    FROM advanced_metrics_cache WHERE date = ?
+                ''', (date,))
+                advanced = cursor.fetchone()
+                
+                if advanced:
+                    row.extend([advanced[0] or '', advanced[1] or '', advanced[2] or ''])
+                else:
+                    row.extend([''] * 3)
+            
+            # Cardio Fitness
+            if 'cardio' in selected_metrics:
+                cursor.execute('''
+                    SELECT vo2_max FROM cardio_fitness_cache WHERE date = ?
+                ''', (date,))
+                cardio = cursor.fetchone()
+                
+                if cardio and cardio[0]:
+                    row.extend([cardio[0]])
+                else:
+                    row.extend([''])
+            
+            # Activities
+            if 'activities' in selected_metrics:
+                cursor.execute('''
+                    SELECT activity_name, duration_ms, calories, avg_heart_rate
+                    FROM activities_cache WHERE date = ?
+                ''', (date,))
+                activities = cursor.fetchall()
+                
+                if activities:
+                    count = len(activities)
+                    summary = '; '.join([
+                        f"{act[0]} ({act[1] // 60000 if act[1] else 0}min, {act[2]}cal, HR:{act[3]})"
+                        for act in activities
+                    ])
+                    row.extend([count, summary])
+                else:
+                    row.extend(['', ''])
+            
+            writer.writerow(row)
+        
+        conn.close()
+        
+        # Create response with CSV content
+        output.seek(0)
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': f'attachment; filename=fitbit-cache-export-{datetime.now().strftime("%Y-%m-%d")}.csv'}
+        )
+        
+    except Exception as e:
+        return Response(f'Error: {str(e)}', status=500)
 
 if __name__ == '__main__':
     app.run_server(debug=True)
