@@ -38,10 +38,27 @@ Automatically starts after you login:
 
 **You don't need to do anything - it just works!**
 
-### 4. **REST API Endpoints**
+### 4. **Cache Log Viewer** 🆕
+Interactive web page to inspect and export cached data:
+- 📍 Access at `/cache-log` route
+- 📅 Select any date range to view
+- ✅ Filter by metric type (Daily, Sleep, Advanced, Activities, Cardio)
+- 💾 **Download as Text** - Human-readable cache report
+- 📊 **Export CSV** - Excel-compatible format for data analysis
+- 🔍 Perfect for troubleshooting, backups, and sharing with healthcare providers
+
+**CSV Export Features:**
+- Dynamic columns based on selected metrics
+- All metrics included: Steps, Weight, Body Fat %, Sleep, HRV, Activities, etc.
+- Empty cells for missing data (Excel-friendly)
+- Activities summarized in single cell
+
+### 5. **REST API Endpoints**
 For MCP server and LLM integration:
 - `GET /api/health` - Health check
 - `GET /api/cache/status` - Cache statistics
+- `GET /api/cache-log` - Generate cache report (JSON)
+- `GET /api/cache-csv` - Export cache data as CSV 🆕
 - `GET /api/data/sleep/<date>` - Sleep data for specific date
 - `GET /api/data/metrics/<date>` - All metrics for specific date
 - `POST /api/cache/refresh/<date>` - Force refresh specific date

@@ -261,7 +261,78 @@ curl -X POST \
 
 ---
 
-### 6. Flush Cache (Not Yet Implemented)
+### 6. Cache Log Viewer (JSON)
+
+**GET** `/api/cache-log?start=<start_date>&end=<end_date>&metrics=<metric_list>`
+
+Generate a human-readable cache report for the specified date range and metrics.
+
+**Parameters:**
+- `start` (query): Start date in YYYY-MM-DD format
+- `end` (query): End date in YYYY-MM-DD format  
+- `metrics` (query): Comma-separated list of metrics to include
+  - Options: `daily`, `sleep`, `advanced`, `cardio`, `activities`
+  - Default: `daily,sleep,advanced,cardio,activities`
+
+**Response:**
+```json
+{
+  "success": true,
+  "report": "================================================================================\nFITBIT CACHE REPORT: 2025-10-20 to 2025-10-25\n...\n"
+}
+```
+
+**Example:**
+```bash
+curl "http://localhost:5032/api/cache-log?start=2025-10-20&end=2025-10-25&metrics=daily,sleep"
+```
+
+---
+
+### 7. Export Cache Data (CSV) 🆕
+
+**GET** `/api/cache-csv?start=<start_date>&end=<end_date>&metrics=<metric_list>`
+
+Export cached data as CSV file for Excel/spreadsheet analysis.
+
+**Parameters:**
+- `start` (query): Start date in YYYY-MM-DD format
+- `end` (query): End date in YYYY-MM-DD format
+- `metrics` (query): Comma-separated list of metrics to include
+  - Options: `daily`, `sleep`, `advanced`, `cardio`, `activities`
+  - Default: `daily,sleep,advanced,cardio,activities`
+
+**Response:**
+- Content-Type: `text/csv`
+- Filename: `fitbit-cache-export-YYYY-MM-DD.csv`
+- Dynamic columns based on selected metrics
+
+**CSV Column Headers:**
+- **Daily Metrics**: Date, Steps, Calories, Distance (mi), Floors, Active Zone Min, Resting HR, Fat Burn Min, Cardio Min, Peak Min, Weight (lbs), Body Fat %, SpO2, EOV
+- **Sleep Metrics**: Sleep Reality Score, Sleep Proxy Score, Sleep Efficiency %, Deep Sleep (min), Light Sleep (min), REM Sleep (min), Wake Time (min), Total Sleep (min)
+- **Advanced Metrics**: HRV (ms), Breathing Rate (bpm), Temperature (°F)
+- **Cardio Metrics**: VO2 Max
+- **Activities**: Activities Count, Activities Summary
+
+**Example:**
+```bash
+# Download all metrics for date range
+curl "http://localhost:5032/api/cache-csv?start=2025-10-01&end=2025-10-31" -o fitbit-export.csv
+
+# Download only daily and sleep metrics
+curl "http://localhost:5032/api/cache-csv?start=2025-10-20&end=2025-10-25&metrics=daily,sleep" -o fitbit-sleep.csv
+```
+
+**Use Cases:**
+- 📊 Create custom charts in Excel/Google Sheets
+- 📈 Long-term trend analysis
+- 💾 External data backups
+- 🏥 Share with healthcare providers
+- 🔬 Statistical analysis and correlations
+
+---
+
+### 8. Flush Cache (Not Yet Implemented)
 
 **POST** `/api/cache/flush`
 

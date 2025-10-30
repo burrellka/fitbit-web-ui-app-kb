@@ -159,30 +159,38 @@ These endpoints support date ranges (`start_date/end_date`), making them **very 
 ---
 
 ### 5. Weight (Range)
-**Endpoint**: `GET https://api.fitbit.com/1/user/-/body/weight/date/{start_date}/{end_date}.json`
+**Endpoint**: `GET https://api.fitbit.com/1/user/-/body/log/weight/date/{start_date}/{end_date}.json`
 
-**Purpose**: Body weight measurements (manual or from Aria scale)
+**Purpose**: Body weight and body fat measurements (manual or from Aria scale)
+
+**⚠️ Important**: The endpoint MUST include `/log/` (`/body/log/weight/`), not just `/body/weight/`. The non-log endpoint returns a different JSON structure that will cause parsing failures.
 
 **Response**:
 ```json
 {
-  "body-weight": [
+  "weight": [
     {
-      "dateTime": "2024-10-01",
+      "date": "2024-10-01",
       "logId": 1234567890,
       "weight": 75.5,
       "bmi": 23.2,
+      "fat": 20.5,
       "source": "Aria"
     }
   ]
 }
 ```
 
-**Note**: Returns kg, app converts to lbs (`kg * 2.20462`)
+**Data Fields**:
+- `weight`: Body weight in kg (converted to lbs: `kg * 2.20462`)
+- `fat`: Body fat percentage (optional, only if logged)
+- `date`: Date of measurement (format: `YYYY-MM-DD`)
 
-**Caching**: ✅ Cached in `daily_metrics_cache` table
+**Caching**: ✅ Cached in `daily_metrics_cache` table (columns: `weight`, `body_fat`)
 
-**Rate Limit Impact**: ✅ **1 call per report**
+**Rate Limit Impact**: ✅ **1 call per report** (fetches entire date range)
+
+**Bug Fix History**: Initially used wrong endpoint (`/body/weight/` instead of `/body/log/weight/`), causing all weight data to show as `None`. Fixed October 30, 2025.
 
 ---
 
