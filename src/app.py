@@ -614,7 +614,7 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
             range_endpoints = [
                 ("Heart Rate", f"https://api.fitbit.com/1/user/-/activities/heart/date/{start_date_str}/{end_date_str}.json"),
                 ("Steps", f"https://api.fitbit.com/1/user/-/activities/steps/date/{start_date_str}/{end_date_str}.json"),
-                ("Weight", f"https://api.fitbit.com/1/user/-/body/weight/date/{start_date_str}/{end_date_str}.json"),
+                ("Weight", f"https://api.fitbit.com/1/user/-/body/log/weight/date/{start_date_str}/{end_date_str}.json"),
                 ("SpO2", f"https://api.fitbit.com/1/user/-/spo2/date/{start_date_str}/{end_date_str}.json"),
                 ("Calories", f"https://api.fitbit.com/1/user/-/activities/calories/date/{start_date_str}/{end_date_str}.json"),
                 ("Distance", f"https://api.fitbit.com/1/user/-/activities/distance/date/{start_date_str}/{end_date_str}.json"),
@@ -757,7 +757,7 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                     ('floors', 'Floors', f"https://api.fitbit.com/1/user/-/activities/floors/date/{start_date_str}/{end_date_str}.json"),
                     ('azm', 'Active Zone Minutes', f"https://api.fitbit.com/1/user/-/activities/active-zone-minutes/date/{start_date_str}/{end_date_str}.json"),
                     ('heartrate', 'Heart Rate', f"https://api.fitbit.com/1/user/-/activities/heart/date/{start_date_str}/{end_date_str}.json"),
-                    ('weight', 'Weight', f"https://api.fitbit.com/1/user/-/body/weight/date/{start_date_str}/{end_date_str}.json"),
+                    ('weight', 'Weight', f"https://api.fitbit.com/1/user/-/body/log/weight/date/{start_date_str}/{end_date_str}.json"),
                     ('spo2', 'SpO2', f"https://api.fitbit.com/1/user/-/spo2/date/{start_date_str}/{end_date_str}.json"),
                 ]
                 
