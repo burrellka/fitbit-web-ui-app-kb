@@ -80,6 +80,11 @@
 - **Smart Cache Management** - Manual "Start Cache" button, "Flush Cache" for troubleshooting
 - **Persistent Storage** - SQLite database survives container restarts
 - **Cache Status Display** - Real-time visibility into what's cached and what's building
+- **Cache Log Viewer** 🆕 - Interactive page (`/cache-log`) to inspect cached data
+  - View cached data for any date range
+  - Filter by metric type (Daily, Sleep, Advanced, Activities, Cardio)
+  - Download as text file or **CSV export for Excel** 📊
+  - Perfect for data analysis, backups, and sharing with healthcare providers
 
 ### 🔌 MCP Server Ready 🆕
 - **RESTful API Endpoints** - Full API for LLM integration via Model Context Protocol (MCP)
@@ -202,9 +207,32 @@ Special thanks to [@dipanghosh](https://github.com/dipanghosh) for contributions
 
 ---
 
-## 🔧 Recent Critical Bug Fixes
+## 🔧 Recent Updates & Bug Fixes
 
-### 🐛 Comprehensive Per-Metric Caching Fix (October 28, 2025 - Final)
+### 🎉 New Features (October 30, 2025)
+**📊 CSV Export for Cache Data**
+- Added CSV export button to Cache Log Viewer (`/cache-log`)
+- Excel-compatible format with dynamic columns based on selected metrics
+- Perfect for creating custom charts, long-term trend analysis, and data sharing
+- Exports all metrics: Daily (Steps, Weight, HR, etc.), Sleep, HRV, Activities, and more
+
+**🔇 Reduced Log Verbosity**
+- Disabled per-metric caching debug logs (CACHE_DEBUG and CACHE_VERIFY)
+- Reduces log spam by ~90% while keeping critical error messages
+- Makes troubleshooting easier by highlighting actual issues
+
+### 🐛 Weight & Body Fat Fix (October 30, 2025)
+**Symptom**: Weight and Body Fat % showed as `None` in all reports and cache logs, despite having data in Fitbit app.
+
+**Root Cause**: App was calling the wrong Fitbit API endpoint (`/body/weight/` instead of `/body/log/weight/`), causing the API to return a different JSON structure that the parsing logic couldn't handle.
+
+**Fix**: Updated weight endpoint to `/body/log/weight/` in both Phase 1 fetch and retry logic. Also added enhanced headers showing most recent vs. earliest weight/body fat with change indicators.
+
+**Impact**: Weight and Body Fat data now cache and display correctly with beautiful trend charts.
+
+---
+
+### 🐛 Comprehensive Per-Metric Caching Fix (October 28, 2025)
 **Symptom**: Even after previous fixes, some metrics remained fragmented. For example, Steps might be 100% cached but Calories only 80% cached, despite both being Phase 1 metrics.
 
 **Root Cause**: Gemini identified that the fragmentation bug affected **ALL 12+ metrics**, not just the 4 Phase 3 metrics (Sleep, HRV, BR, Temp). If any Phase 1 metric (Steps, Calories, Distance, Floors, AZM, RHR, Weight, SpO2) failed during initial fetch, the builder would never retry it.
