@@ -419,12 +419,13 @@ def process_and_cache_daily_metrics(dates_str_list, metric_type, response_data, 
         for date_str, weight_data in weight_lookup.items():
             if weight_data is not None:
                 try:
+                    # === START FIX: Define variables correctly ===
                     weight_value = weight_data.get('weight')
                     body_fat_value = weight_data.get('body_fat')
+                    # === END FIX ===
                     
                     if weight_value is None: # Skip if no weight value
                         continue
-
                     print(f"  [CACHE_DEBUG] Caching Weight for {date_str}: Weight={weight_value}, Body Fat={body_fat_value}%")
                     
                     # 3. Call the cache function with BOTH weight and body_fat
