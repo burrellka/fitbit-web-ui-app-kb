@@ -1036,11 +1036,13 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                         print("✅ [3A: Weight] 100% cached")
                 
                 # --- 3B: FETCH MISSING SLEEP DATA ---
-                if api_calls_this_hour < MAX_CALLS_PER_HOUR:
+                if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
                     missing_sleep = cache.get_missing_dates(date_range_start, date_range_end, metric_type='sleep')
                     if missing_sleep:
-                        dates_to_fetch = list(reversed(missing_sleep))[:28]  # Fetch 28 newest
-                        print(f"📥 [3B: Sleep] Fetching {len(dates_to_fetch)} missing dates...")
+                        # Fetch as many as budget allows (1 API call per date), prioritizing newest
+                        remaining_budget = MAX_CALLS_PER_HOUR - api_calls_this_hour
+                        dates_to_fetch = list(reversed(missing_sleep))[:remaining_budget]
+                        print(f"📥 [3B: Sleep] Fetching {len(dates_to_fetch)} missing dates (budget: {remaining_budget})...")
                         for date_str in dates_to_fetch:
                             if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
                                 break
@@ -1083,14 +1085,15 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                                 print(f"❌ Error caching Sleep for {date_str}: {e}")
                         print(f"✅ [3B: Sleep] Cached {phase3_metrics_processed['sleep']} dates")
                     else:
-                        print("✅ [3B: Sleep] 100% cached")
+                        print("✅ [3B: Sleep] 100% cached (365 days)")
                 
                 # --- 3C: FETCH MISSING HRV DATA ---
                 if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
                     missing_hrv = cache.get_missing_dates(date_range_start, date_range_end, metric_type='hrv')
                     if missing_hrv:
-                        dates_to_fetch = list(reversed(missing_hrv))[:28]
-                        print(f"📥 [3C: HRV] Fetching {len(dates_to_fetch)} missing dates...")
+                        remaining_budget = MAX_CALLS_PER_HOUR - api_calls_this_hour
+                        dates_to_fetch = list(reversed(missing_hrv))[:remaining_budget]
+                        print(f"📥 [3C: HRV] Fetching {len(dates_to_fetch)} missing dates (budget: {remaining_budget})...")
                         for date_str in dates_to_fetch:
                             if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
                                 break
@@ -1117,8 +1120,9 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                 if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
                     missing_br = cache.get_missing_dates(date_range_start, date_range_end, metric_type='breathing_rate')
                     if missing_br:
-                        dates_to_fetch = list(reversed(missing_br))[:28]
-                        print(f"📥 [3D: Breathing Rate] Fetching {len(dates_to_fetch)} missing dates...")
+                        remaining_budget = MAX_CALLS_PER_HOUR - api_calls_this_hour
+                        dates_to_fetch = list(reversed(missing_br))[:remaining_budget]
+                        print(f"📥 [3D: Breathing Rate] Fetching {len(dates_to_fetch)} missing dates (budget: {remaining_budget})...")
                         for date_str in dates_to_fetch:
                             if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
                                 break
@@ -1145,8 +1149,9 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                 if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
                     missing_temp = cache.get_missing_dates(date_range_start, date_range_end, metric_type='temperature')
                     if missing_temp:
-                        dates_to_fetch = list(reversed(missing_temp))[:28]
-                        print(f"📥 [3E: Temperature] Fetching {len(dates_to_fetch)} missing dates...")
+                        remaining_budget = MAX_CALLS_PER_HOUR - api_calls_this_hour
+                        dates_to_fetch = list(reversed(missing_temp))[:remaining_budget]
+                        print(f"📥 [3E: Temperature] Fetching {len(dates_to_fetch)} missing dates (budget: {remaining_budget})...")
                         for date_str in dates_to_fetch:
                             if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
                                 break
@@ -3128,7 +3133,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     # =================================================================
 
     # 🚀 CACHE-FIRST CHECK: Verify if ALL data is cached before making ANY API calls
-    print(f"📊 Generating report for {start_date} to {end_date}")
+    print(f"📊 Generating report for START: {start_date} to END: {end_date}")
     
     # Generate list of dates in range
     dates_str_list = []
@@ -3880,9 +3885,14 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     spo2_avg = {'overall': safe_avg(df_merged["SPO2"].mean(),1), '30d': safe_avg(df_merged["SPO2"].tail(30).mean(),1)}
     sleep_avg = {'overall': safe_avg(df_merged["Total Sleep Minutes"].mean(),1), '30d': safe_avg(df_merged["Total Sleep Minutes"].tail(30).mean(),1)}
     active_mins_avg = {'overall': safe_avg(df_merged["Total Active Minutes"].mean(),2), '30d': safe_avg(df_merged["Total Active Minutes"].tail(30).mean(),2)}
-    weekly_steps_array = np.array([0]*days_name_list.index(datetime.fromisoformat(start_date).strftime('%A')) + df_merged["Steps Count"].to_list() + [0]*(6 - days_name_list.index(datetime.fromisoformat(end_date).strftime('%A'))))
-    weekly_steps_array = np.transpose(weekly_steps_array.reshape((int(len(weekly_steps_array)/7), 7)))
-    weekly_steps_array = pd.DataFrame(weekly_steps_array, index=days_name_list)
+    # Create weekly steps heatmap (only if we have at least 7 days)
+    if len(df_merged) >= 7:
+        weekly_steps_array = np.array([0]*days_name_list.index(datetime.fromisoformat(start_date).strftime('%A')) + df_merged["Steps Count"].to_list() + [0]*(6 - days_name_list.index(datetime.fromisoformat(end_date).strftime('%A'))))
+        weekly_steps_array = np.transpose(weekly_steps_array.reshape((int(len(weekly_steps_array)/7), 7)))
+        weekly_steps_array = pd.DataFrame(weekly_steps_array, index=days_name_list)
+    else:
+        # If less than 7 days, create a simple single-column DataFrame
+        weekly_steps_array = pd.DataFrame([[0]], index=['Monday'])
 
     # Plotting data-----------------------------------------------------------------------------------------------------------------------
 
@@ -3953,18 +3963,25 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                               labels={"body_fat": "Body Fat (%)"})
         if df_merged["body_fat"].dtype != object and df_merged["body_fat"].notna().any():
             valid_body_fat = df_merged[df_merged["body_fat"].notna()]
-            fig_body_fat.add_annotation(x=valid_body_fat.iloc[valid_body_fat["body_fat"].idxmax()]["Date"], 
-                                       y=df_merged["body_fat"].max(), text=str(round(df_merged["body_fat"].max(), 1)) + "%", 
-                                       showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, 
-                                       font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
-            fig_body_fat.add_annotation(x=valid_body_fat.iloc[valid_body_fat["body_fat"].idxmin()]["Date"], 
-                                       y=df_merged["body_fat"].min(), text=str(round(df_merged["body_fat"].min(), 1)) + "%", 
-                                       showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, 
-                                       font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
-            fig_body_fat.add_hline(y=df_merged["body_fat"].mean(), line_dash="dot",
-                                  annotation_text="Average : " + str(safe_avg(df_merged["body_fat"].mean(), 1)) + "%", 
-                                  annotation_position="bottom right", annotation_bgcolor="#2c3e50", annotation_opacity=0.6, 
-                                  annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
+            # Only add annotations if we have at least one valid data point
+            if len(valid_body_fat) > 0:
+                # Get the max/min indices within the valid_body_fat dataframe
+                max_idx = valid_body_fat["body_fat"].idxmax()
+                min_idx = valid_body_fat["body_fat"].idxmin()
+                
+                # Use .loc[] to safely access the row
+                fig_body_fat.add_annotation(x=valid_body_fat.loc[max_idx, "Date"], 
+                                           y=df_merged["body_fat"].max(), text=str(round(df_merged["body_fat"].max(), 1)) + "%", 
+                                           showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, 
+                                           font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
+                fig_body_fat.add_annotation(x=valid_body_fat.loc[min_idx, "Date"], 
+                                           y=df_merged["body_fat"].min(), text=str(round(df_merged["body_fat"].min(), 1)) + "%", 
+                                           showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, 
+                                           font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
+                fig_body_fat.add_hline(y=df_merged["body_fat"].mean(), line_dash="dot",
+                                      annotation_text="Average : " + str(safe_avg(df_merged["body_fat"].mean(), 1)) + "%", 
+                                      annotation_position="bottom right", annotation_bgcolor="#2c3e50", annotation_opacity=0.6, 
+                                      annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
         body_fat_summary_df = calculate_table_data(df_merged, "body_fat")
         body_fat_summary_table = dash_table.DataTable(body_fat_summary_df.to_dict('records'), [{"name": i, "id": i} for i in body_fat_summary_df.columns], 
                                                      style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], 
