@@ -5362,7 +5362,7 @@ def api_cache_csv():
             # Activities
             if 'activities' in selected_metrics:
                 cursor.execute('''
-                    SELECT activity_name, duration_ms, calories, avg_heart_rate
+                    SELECT activity_name, duration_ms, calories, avg_heart_rate, steps, distance
                     FROM activities_cache WHERE date = ?
                 ''', (date,))
                 activities = cursor.fetchall()
@@ -5370,7 +5370,7 @@ def api_cache_csv():
                 if activities:
                     count = len(activities)
                     summary = '; '.join([
-                        f"{act[0]} ({act[1] // 60000 if act[1] else 0}min, {act[2]}cal, HR:{act[3]})"
+                        f"{act[0]} ({act[1] // 60000 if act[1] else 0}min, {act[2]}cal, HR:{act[3]}, {act[4] or 'N/A'} steps, {round(act[5] * 0.621371, 2) if act[5] else 'N/A'}mi)"
                         for act in activities
                     ])
                     row.extend([count, summary])
