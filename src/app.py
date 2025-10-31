@@ -1828,15 +1828,6 @@ app.layout = html.Div(children=[
         html.Div(style={"height": '40px'}),
         html.H4("Exercise Log 🏋️", style={'font-weight': 'bold'}),
         html.H6("Logged exercises and workouts tracked by your Fitbit device. Includes activity type, duration, calories burned, and average heart rate for each session."),
-        html.Div(style={'display': 'flex', 'gap': '20px', 'align-items': 'center', 'justify-content': 'center', 'margin': '20px'}, children=[
-            html.Label("Filter by Activity Type:", style={'font-weight': 'bold'}),
-            dcc.Dropdown(
-                id='exercise-type-filter',
-                options=[],  # Will be populated dynamically
-                value='All',
-                style={'min-width': '200px'}
-            ),
-        ]),
         html.Div(id='exercise_log_table', style={'max-width': '1200px', 'margin': 'auto', 'font-weight': 'bold'}, children=[]),
         html.Div(style={"height": '20px'}),
         html.H5("📊 Workout Details", style={'font-weight': 'bold', 'margin-top': '20px'}),
@@ -4168,10 +4159,12 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             if activity_date >= start_date and activity_date <= end_date:
                 activity_name = activity.get('activityName', 'N/A')
                 activity_types.add(activity_name)
+                
                 exercise_data.append({
                     'Date': activity_date,
                     'Activity': activity_name,
                     'Duration (min)': activity.get('duration', 0) // 60000,
+                    'Active Duration (min)': activity.get('activeDuration', 0) // 60000 if activity.get('activeDuration') else 'N/A',
                     'Calories': activity.get('calories', 0),
                     'Avg HR': activity.get('averageHeartRate', 'N/A'),
                     'Steps': activity.get('steps', 'N/A'),
@@ -5362,18 +5355,35 @@ def api_cache_csv():
             # Activities
             if 'activities' in selected_metrics:
                 cursor.execute('''
-                    SELECT activity_name, duration_ms, calories, avg_heart_rate, steps, distance
+                    SELECT activity_name, duration_ms, calories, avg_heart_rate, steps, distance, activity_data_json
                     FROM activities_cache WHERE date = ?
                 ''', (date,))
                 activities = cursor.fetchall()
                 
                 if activities:
                     count = len(activities)
-                    summary = '; '.join([
-                        f"{act[0]} ({act[1] // 60000 if act[1] else 0}min, {act[2]}cal, HR:{act[3]}, {act[4] or 'N/A'} steps, {round(act[5] * 0.621371, 2) if act[5] else 'N/A'}mi)"
-                        for act in activities
-                    ])
-                    row.extend([count, summary])
+                    summaries = []
+                    for act in activities:
+                        # Extract basic fields
+                        name = act[0]
+                        duration_min = act[1] // 60000 if act[1] else 0
+                        calories = act[2]
+                        hr = act[3]
+                        steps = act[4] or 'N/A'
+                        distance_mi = round(act[5] * 0.621371, 2) if act[5] else 'N/A'
+                        
+                        # Parse JSON to get active duration
+                        active_duration = 'N/A'
+                        try:
+                            import json
+                            activity_json = json.loads(act[6]) if act[6] else {}
+                            active_duration = activity_json.get('activeDuration', 0) // 60000 if activity_json.get('activeDuration') else 'N/A'
+                        except:
+                            pass
+                        
+                        summaries.append(f"{name} ({duration_min}min, Active:{active_duration}min, {calories}cal, HR:{hr}, {steps} steps, {distance_mi}mi)")
+                    
+                    row.extend([count, '; '.join(summaries)])
                 else:
                     row.extend(['', ''])
             
