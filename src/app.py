@@ -1013,18 +1013,25 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                             
                             if response.status_code == 429:
                                 rate_limit_hit = True
+                                print(f"⚠️ [3A: Weight] Rate limit hit")
                             elif response.status_code == 200:
                                 data = response.json()
+                                print(f"📥 [3A: Weight] API Response: {len(data.get('weight', []))} weight entries")
                                 if 'weight' in data and len(data['weight']) > 0:
+                                    # Show first entry for debugging
+                                    first_entry = data['weight'][0]
+                                    print(f"   First entry: date={first_entry.get('date')}, weight={first_entry.get('weight')}kg, fat={first_entry.get('fat')}%")
                                     cached = process_and_cache_daily_metrics(None, 'weight', data, cache)
                                     phase3_metrics_processed['weight'] = cached
                                     print(f"✅ [3A: Weight] Cached {cached} dates")
                                 else:
-                                    print("⚠️ [3A: Weight] No weight data in response")
+                                    print(f"⚠️ [3A: Weight] No weight data in response: {data}")
                             else:
-                                print(f"⚠️ [3A: Weight] Error {response.status_code}")
+                                print(f"⚠️ [3A: Weight] Error {response.status_code}: {response.text[:200]}")
                         except Exception as e:
                             print(f"❌ [3A: Weight] Error: {e}")
+                            import traceback
+                            traceback.print_exc()
                     else:
                         print("✅ [3A: Weight] 100% cached")
                 
