@@ -846,13 +846,8 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                             if metric_name == "Sleep" and 'sleep' in data:
                                 for sleep_record in data['sleep']:
                                     if sleep_record.get('isMainSleep', True):
-                                        sleep_score = None
-                                        if 'sleepScore' in sleep_record and isinstance(sleep_record['sleepScore'], dict):
-                                            sleep_score = sleep_record['sleepScore'].get('overall')
-                                        # DO NOT fallback to efficiency - they are different metrics!
-                                        
-                                        # Cache sleep data even if sleep_score is None (stages, duration still valuable!)
-                                        # Calculate 3-tier sleep scores
+                                        # Note: Fitbit's sleep score doesn't work, so we only use our calculated scores
+                                        # Calculate our custom 3-tier sleep scores from stages
                                         minutes_asleep = sleep_record.get('minutesAsleep', 0)
                                         deep_min = sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes', 0)
                                         rem_min = sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes', 0)
@@ -860,15 +855,12 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                                         
                                         calculated_scores = calculate_sleep_scores(minutes_asleep, deep_min, rem_min, minutes_awake)
                                         
-                                        if sleep_score is not None:
-                                            print(f"✅ YESTERDAY REFRESH - Found REAL sleep score for {yesterday}: {sleep_score}")
-                                        else:
-                                            print(f"⚠️ YESTERDAY REFRESH - No sleep score for {yesterday}, but caching stages/duration")
+                                        print(f"⚠️ YESTERDAY REFRESH - No sleep score for {yesterday}, but caching stages/duration")
                                         print(f"   📊 Calculated scores: Reality={calculated_scores['reality_score']}, Proxy={calculated_scores['proxy_score']}, Efficiency={sleep_record.get('efficiency')}")
                                         
                                         cache.set_sleep_score(
                                             date=yesterday,
-                                            sleep_score=sleep_score,  # Can be None - that's OK!
+                                            sleep_score=None,  # Fitbit sleep score doesn't work
                                             efficiency=sleep_record.get('efficiency'),
                                             proxy_score=calculated_scores['proxy_score'],
                                             reality_score=calculated_scores['reality_score'],
@@ -1035,55 +1027,67 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                     else:
                         print("✅ [3A: Weight] 100% cached")
                 
-                # --- 3B: FETCH MISSING SLEEP DATA ---
+                # --- 3B: FETCH MISSING SLEEP DATA (RANGE ENDPOINT - 1 CALL = ~30 DAYS) ---
                 if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
                     missing_sleep = cache.get_missing_dates(date_range_start, date_range_end, metric_type='sleep')
                     if missing_sleep:
-                        # Fetch as many as budget allows (1 API call per date), prioritizing newest
-                        remaining_budget = MAX_CALLS_PER_HOUR - api_calls_this_hour
-                        dates_to_fetch = list(reversed(missing_sleep))[:remaining_budget]
-                        print(f"📥 [3B: Sleep] Fetching {len(dates_to_fetch)} missing dates (budget: {remaining_budget})...")
-                        for date_str in dates_to_fetch:
-                            if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
-                                break
-                            try:
-                                response = requests.get(f"https://api.fitbit.com/1.2/user/-/sleep/date/{date_str}.json", headers=headers, timeout=10)
-                                api_calls_this_hour += 1
-                                if response.status_code == 429:
-                                    rate_limit_hit = True
-                                    break
-                                if response.status_code == 200:
-                                    data = response.json()
-                                    if 'sleep' in data:
-                                        for sleep_record in data['sleep']:
-                                            if sleep_record.get('isMainSleep', True):
-                                                sleep_score = None
-                                                if 'sleepScore' in sleep_record and isinstance(sleep_record['sleepScore'], dict):
-                                                    sleep_score = sleep_record['sleepScore'].get('overall')
-                                                minutes_asleep = sleep_record.get('minutesAsleep', 0)
-                                                deep_min = sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes', 0)
-                                                rem_min = sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes', 0)
-                                                minutes_awake = sleep_record.get('minutesAwake', 0)
-                                                calculated_scores = calculate_sleep_scores(minutes_asleep, deep_min, rem_min, minutes_awake)
-                                                cache.set_sleep_score(
-                                                    date=date_str,
-                                                    sleep_score=sleep_score,
-                                                    efficiency=sleep_record.get('efficiency'),
-                                                    proxy_score=calculated_scores['proxy_score'],
-                                                    reality_score=calculated_scores['reality_score'],
-                                                    total_sleep=minutes_asleep,
-                                                    deep=deep_min,
-                                                    light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
-                                                    rem=rem_min,
-                                                    wake=minutes_awake,
-                                                    start_time=sleep_record.get('startTime'),
-                                                    sleep_data_json=str(sleep_record)
-                                                )
-                                                phase3_metrics_processed['sleep'] += 1
-                                                break
-                            except Exception as e:
-                                print(f"❌ Error caching Sleep for {date_str}: {e}")
-                        print(f"✅ [3B: Sleep] Cached {phase3_metrics_processed['sleep']} dates")
+                        # Use range endpoint: 1 API call fetches ~30 days of sleep data
+                        newest_date = max(missing_sleep)
+                        oldest_date = min(missing_sleep)
+                        print(f"📥 [3B: Sleep] Fetching from {oldest_date} to {newest_date} (1 API call)...")
+                        
+                        try:
+                            endpoint = f"https://api.fitbit.com/1.2/user/-/sleep/date/{oldest_date}/{newest_date}.json"
+                            response = requests.get(endpoint, headers=headers, timeout=10)
+                            api_calls_this_hour += 1
+                            
+                            if response.status_code == 429:
+                                rate_limit_hit = True
+                                print(f"⚠️ [3B: Sleep] Rate limit hit")
+                            elif response.status_code == 200:
+                                data = response.json()
+                                sleep_records = data.get('sleep', [])
+                                print(f"📥 [3B: Sleep] API Response: {len(sleep_records)} sleep records")
+                                
+                                for sleep_record in sleep_records:
+                                    if sleep_record.get('isMainSleep', True):
+                                        date_str = sleep_record.get('dateOfSleep')
+                                        if not date_str:
+                                            continue
+                                        
+                                        try:
+                                            minutes_asleep = sleep_record.get('minutesAsleep', 0)
+                                            deep_min = sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes', 0)
+                                            rem_min = sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes', 0)
+                                            minutes_awake = sleep_record.get('minutesAwake', 0)
+                                            calculated_scores = calculate_sleep_scores(minutes_asleep, deep_min, rem_min, minutes_awake)
+                                            
+                                            # Note: Fitbit's sleep score doesn't work, so we only use our calculated scores
+                                            cache.set_sleep_score(
+                                                date=date_str,
+                                                sleep_score=None,  # Fitbit sleep score doesn't work
+                                                efficiency=sleep_record.get('efficiency'),
+                                                proxy_score=calculated_scores['proxy_score'],
+                                                reality_score=calculated_scores['reality_score'],
+                                                total_sleep=minutes_asleep,
+                                                deep=deep_min,
+                                                light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
+                                                rem=rem_min,
+                                                wake=minutes_awake,
+                                                start_time=sleep_record.get('startTime'),
+                                                sleep_data_json=str(sleep_record)
+                                            )
+                                            phase3_metrics_processed['sleep'] += 1
+                                        except Exception as e:
+                                            print(f"❌ Error caching sleep for {date_str}: {e}")
+                                
+                                print(f"✅ [3B: Sleep] Cached {phase3_metrics_processed['sleep']} dates")
+                            else:
+                                print(f"⚠️ [3B: Sleep] Error {response.status_code}: {response.text[:200]}")
+                        except Exception as e:
+                            print(f"❌ [3B: Sleep] Error: {e}")
+                            import traceback
+                            traceback.print_exc()
                     else:
                         print("✅ [3B: Sleep] 100% cached (365 days)")
                 
@@ -1228,8 +1232,8 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
 
 def populate_sleep_score_cache(dates_to_fetch: list, headers: dict, force_refresh: bool = False):
     """
-    Fetch actual sleep scores from Fitbit API for missing dates and cache them.
-    This uses the daily endpoint which includes the real sleep score.
+    Fetch sleep data from Fitbit API for missing dates and cache them.
+    Note: Fitbit's sleep score doesn't work, so we only use our custom calculated scores.
     
     Args:
         dates_to_fetch: List of dates to fetch
@@ -1242,7 +1246,7 @@ def populate_sleep_score_cache(dates_to_fetch: list, headers: dict, force_refres
     fetched_count = 0
     for date_str in dates_to_fetch:
         try:
-            # Fetch individual day's sleep data (includes sleepScore)
+            # Fetch individual day's sleep data
             response = requests.get(
                 f"https://api.fitbit.com/1.2/user/-/sleep/date/{date_str}.json",
                 headers=headers,
@@ -1259,15 +1263,8 @@ def populate_sleep_score_cache(dates_to_fetch: list, headers: dict, force_refres
             if 'sleep' in response and len(response['sleep']) > 0:
                 for sleep_record in response['sleep']:
                     if sleep_record.get('isMainSleep', True):
-                        # Extract ACTUAL sleep score (NOT efficiency!)
-                        sleep_score = None
-                        if 'sleepScore' in sleep_record and isinstance(sleep_record['sleepScore'], dict):
-                            sleep_score = sleep_record['sleepScore'].get('overall')
-                            print(f"✅ Found REAL sleep score for {date_str}: {sleep_score}")
-                        else:
-                            print(f"⚠️ No sleep score found for {date_str} - API didn't provide it (may be too short/incomplete sleep)")
-                        
-                        # Calculate 3-tier sleep scores
+                        # Note: Fitbit's sleep score doesn't work, so we only use our calculated scores
+                        # Calculate our custom 3-tier sleep scores from stages
                         minutes_asleep = sleep_record.get('minutesAsleep', 0)
                         deep_min = sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes', 0)
                         rem_min = sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes', 0)
@@ -1275,26 +1272,23 @@ def populate_sleep_score_cache(dates_to_fetch: list, headers: dict, force_refres
                         
                         calculated_scores = calculate_sleep_scores(minutes_asleep, deep_min, rem_min, minutes_awake)
                         
-                        # NEVER fallback to efficiency - efficiency != sleep score!
-                        # If Fitbit doesn't provide a sleep score, store None
-                        if sleep_score is not None or 'efficiency' in sleep_record:
-                            # Cache the sleep score and related data
-                            cache.set_sleep_score(
-                                date=date_str,
-                                sleep_score=sleep_score,
-                                efficiency=sleep_record.get('efficiency'),
-                                proxy_score=calculated_scores['proxy_score'],
-                                reality_score=calculated_scores['reality_score'],
-                                total_sleep=minutes_asleep,
-                                deep=deep_min,
-                                light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
-                                rem=rem_min,
-                                wake=minutes_awake,
-                                start_time=sleep_record.get('startTime'),
-                                sleep_data_json=str(sleep_record)
-                            )
-                            fetched_count += 1
-                            print(f"✅ Cached sleep scores for {date_str} - Reality: {calculated_scores['reality_score']}, Proxy: {calculated_scores['proxy_score']}")
+                        # Cache sleep data with our calculated scores
+                        cache.set_sleep_score(
+                            date=date_str,
+                            sleep_score=None,  # Fitbit sleep score doesn't work
+                            efficiency=sleep_record.get('efficiency'),
+                            proxy_score=calculated_scores['proxy_score'],
+                            reality_score=calculated_scores['reality_score'],
+                            total_sleep=minutes_asleep,
+                            deep=deep_min,
+                            light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
+                            rem=rem_min,
+                            wake=minutes_awake,
+                            start_time=sleep_record.get('startTime'),
+                            sleep_data_json=str(sleep_record)
+                        )
+                        fetched_count += 1
+                        print(f"✅ Cached sleep scores for {date_str} - Reality: {calculated_scores['reality_score']}, Proxy: {calculated_scores['proxy_score']}")
                         break  # Only process main sleep
         except Exception as e:
             print(f"⚠️ Error fetching sleep score for {date_str}: {e}")
