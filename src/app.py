@@ -4720,6 +4720,200 @@ def api_get_exercise(date):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@server.route('/api/data/range', methods=['GET'])
+def api_get_data_range():
+    """Get cached data for a date range - optimized for MCP server
+    
+    Query Parameters:
+        start (required): Start date (YYYY-MM-DD)
+        end (required): End date (YYYY-MM-DD)
+        metrics (optional): Comma-separated list of metric types
+                           Options: daily, sleep, advanced, cardio, activities
+                           Default: all metrics
+    
+    Example: /api/data/range?start=2025-10-01&end=2025-10-31&metrics=daily,sleep
+    """
+    start_date = request.args.get('start')
+    end_date = request.args.get('end')
+    metrics_str = request.args.get('metrics', 'daily,sleep,advanced,cardio,activities')
+    
+    if not start_date or not end_date:
+        return jsonify({
+            'success': False,
+            'error': 'Missing required parameters: start and end dates'
+        }), 400
+    
+    # Validate date format
+    try:
+        from datetime import datetime, timedelta
+        start = datetime.strptime(start_date, '%Y-%m-%d')
+        end = datetime.strptime(end_date, '%Y-%m-%d')
+        
+        if start > end:
+            return jsonify({
+                'success': False,
+                'error': 'Start date must be before or equal to end date'
+            }), 400
+        
+        # Limit to 365 days to prevent abuse
+        if (end - start).days > 365:
+            return jsonify({
+                'success': False,
+                'error': 'Date range cannot exceed 365 days'
+            }), 400
+            
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': 'Invalid date format. Use YYYY-MM-DD'
+        }), 400
+    
+    selected_metrics = set(metrics_str.split(','))
+    
+    try:
+        conn = sqlite3.connect(cache.db_path)
+        cursor = conn.cursor()
+        
+        # Generate date range
+        dates = [(start + timedelta(days=x)).strftime('%Y-%m-%d') 
+                 for x in range((end - start).days + 1)]
+        
+        data = []
+        
+        for date in dates:
+            day_data = {'date': date}
+            
+            # Daily Metrics
+            if 'daily' in selected_metrics:
+                cursor.execute('''
+                    SELECT steps, calories, distance, floors, active_zone_minutes,
+                           resting_heart_rate, fat_burn_minutes, cardio_minutes, peak_minutes,
+                           weight, body_fat, spo2, eov
+                    FROM daily_metrics_cache WHERE date = ?
+                ''', (date,))
+                daily = cursor.fetchone()
+                
+                if daily:
+                    day_data['daily'] = {
+                        'steps': daily[0],
+                        'calories': daily[1],
+                        'distance_km': daily[2],
+                        'distance_mi': round(daily[2] * 0.621371, 2) if daily[2] else None,
+                        'floors': daily[3],
+                        'active_zone_minutes': daily[4],
+                        'resting_heart_rate': daily[5],
+                        'fat_burn_minutes': daily[6],
+                        'cardio_minutes': daily[7],
+                        'peak_minutes': daily[8],
+                        'weight_lbs': daily[9],
+                        'body_fat_pct': daily[10],
+                        'spo2': daily[11],
+                        'eov': daily[12]
+                    }
+            
+            # Sleep Metrics
+            if 'sleep' in selected_metrics:
+                cursor.execute('''
+                    SELECT sleep_score, efficiency, proxy_score, reality_score,
+                           total_sleep, deep_minutes, light_minutes, rem_minutes, wake_minutes,
+                           start_time
+                    FROM sleep_cache WHERE date = ?
+                ''', (date,))
+                sleep = cursor.fetchone()
+                
+                if sleep:
+                    day_data['sleep'] = {
+                        'fitbit_score': sleep[0],
+                        'efficiency': sleep[1],
+                        'proxy_score': sleep[2],
+                        'reality_score': sleep[3],
+                        'total_minutes': sleep[4],
+                        'deep_minutes': sleep[5],
+                        'light_minutes': sleep[6],
+                        'rem_minutes': sleep[7],
+                        'wake_minutes': sleep[8],
+                        'start_time': sleep[9]
+                    }
+            
+            # Advanced Metrics
+            if 'advanced' in selected_metrics:
+                cursor.execute('''
+                    SELECT hrv, breathing_rate, temperature
+                    FROM advanced_metrics_cache WHERE date = ?
+                ''', (date,))
+                advanced = cursor.fetchone()
+                
+                if advanced:
+                    day_data['advanced'] = {
+                        'hrv_ms': advanced[0],
+                        'breathing_rate_bpm': advanced[1],
+                        'temperature_f': advanced[2]
+                    }
+            
+            # Cardio Fitness
+            if 'cardio' in selected_metrics:
+                cursor.execute('''
+                    SELECT vo2_max FROM cardio_fitness_cache WHERE date = ?
+                ''', (date,))
+                cardio = cursor.fetchone()
+                
+                if cardio and cardio[0]:
+                    day_data['cardio'] = {
+                        'vo2_max': cardio[0]
+                    }
+            
+            # Activities
+            if 'activities' in selected_metrics:
+                cursor.execute('''
+                    SELECT activity_id, activity_name, duration_ms, calories, 
+                           avg_heart_rate, steps, distance, activity_data_json
+                    FROM activities_cache WHERE date = ?
+                ''', (date,))
+                activities = cursor.fetchall()
+                
+                if activities:
+                    day_data['activities'] = []
+                    for act in activities:
+                        activity = {
+                            'activity_id': act[0],
+                            'name': act[1],
+                            'duration_minutes': act[2] // 60000 if act[2] else None,
+                            'calories': act[3],
+                            'avg_heart_rate': act[4],
+                            'steps': act[5],
+                            'distance_km': act[6],
+                            'distance_mi': round(act[6] * 0.621371, 2) if act[6] else None
+                        }
+                        
+                        # Extract active duration from JSON if available
+                        try:
+                            import json
+                            activity_json = json.loads(act[7]) if act[7] else {}
+                            activity['active_duration_minutes'] = activity_json.get('activeDuration', 0) // 60000 if activity_json.get('activeDuration') else None
+                        except:
+                            pass
+                        
+                        day_data['activities'].append(activity)
+            
+            data.append(day_data)
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'start_date': start_date,
+            'end_date': end_date,
+            'total_days': len(data),
+            'metrics_included': list(selected_metrics),
+            'data': data
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @server.route('/api/health', methods=['GET'])
 def api_health():
     """Health check endpoint"""
