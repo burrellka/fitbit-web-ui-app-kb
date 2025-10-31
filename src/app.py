@@ -647,13 +647,13 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                     # Check for errors
                     if response.status_code != 200:
                         print(f"⚠️ Error ({response.status_code})")
-                        if metric_name == "Activities":
-                            print(f"   ℹ️ Activities endpoint: {endpoint}")
+                        if metric_name in ["Activities", "Weight"]:
+                            print(f"   ℹ️ {metric_name} endpoint: {endpoint}")
                             try:
                                 error_data = response.json()
                                 print(f"   ℹ️ Error response: {error_data}")
                             except:
-                                pass
+                                print(f"   ℹ️ Response text: {response.text[:200]}")
                         continue
                     
                     print(f"✅ Success ({response.status_code})", end="")
