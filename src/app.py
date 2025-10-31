@@ -612,10 +612,10 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
             rate_limit_hit = False  # Flag to track if we hit rate limit
             
             # These endpoints support date ranges - very efficient!
+            # NOTE: Weight endpoint removed - it only supports 31-day max, moved to Phase 3
             range_endpoints = [
                 ("Heart Rate", f"https://api.fitbit.com/1/user/-/activities/heart/date/{start_date_str}/{end_date_str}.json"),
                 ("Steps", f"https://api.fitbit.com/1/user/-/activities/steps/date/{start_date_str}/{end_date_str}.json"),
-                ("Weight", f"https://api.fitbit.com/1/user/-/body/log/weight/date/{start_date_str}/{end_date_str}.json"),
                 ("SpO2", f"https://api.fitbit.com/1/user/-/spo2/date/{start_date_str}/{end_date_str}.json"),
                 ("Calories", f"https://api.fitbit.com/1/user/-/activities/calories/date/{start_date_str}/{end_date_str}.json"),
                 ("Distance", f"https://api.fitbit.com/1/user/-/activities/distance/date/{start_date_str}/{end_date_str}.json"),
@@ -751,6 +751,7 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                 print("\n📍 PHASE 1 RETRY: Checking for missing Phase 1 metrics...")
                 print("-" * 60)
                 
+                # NOTE: Weight removed - moved to Phase 3 due to 31-day API limit
                 phase1_retry_metrics = [
                     ('steps', 'Steps', f"https://api.fitbit.com/1/user/-/activities/steps/date/{start_date_str}/{end_date_str}.json"),
                     ('calories', 'Calories', f"https://api.fitbit.com/1/user/-/activities/calories/date/{start_date_str}/{end_date_str}.json"),
@@ -758,7 +759,6 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                     ('floors', 'Floors', f"https://api.fitbit.com/1/user/-/activities/floors/date/{start_date_str}/{end_date_str}.json"),
                     ('azm', 'Active Zone Minutes', f"https://api.fitbit.com/1/user/-/activities/active-zone-minutes/date/{start_date_str}/{end_date_str}.json"),
                     ('heartrate', 'Heart Rate', f"https://api.fitbit.com/1/user/-/activities/heart/date/{start_date_str}/{end_date_str}.json"),
-                    ('weight', 'Weight', f"https://api.fitbit.com/1/user/-/body/log/weight/date/{start_date_str}/{end_date_str}.json"),
                     ('spo2', 'SpO2', f"https://api.fitbit.com/1/user/-/spo2/date/{start_date_str}/{end_date_str}.json"),
                 ]
                 
@@ -1135,8 +1135,57 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                     else:
                         print("✅ [3D: Temperature] 100% cached")
                 
+                # --- 3E: FETCH MISSING WEIGHT DATA (30-day chunks using period format) ---
+                if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
+                    if 'weight' not in phase3_metrics_processed:
+                        phase3_metrics_processed['weight'] = 0
+                    
+                    missing_weight = cache.get_missing_dates(date_range_start, date_range_end, metric_type='weight')
+                    if missing_weight:
+                        # Weight API only supports ~31 days max, so we use /1m period format
+                        # We'll fetch in monthly chunks starting from most recent
+                        print(f"📥 [3E: Weight] Fetching {len(missing_weight)} missing dates using 30-day chunks...")
+                        
+                        # Group missing dates into monthly chunks
+                        current_chunk_end = datetime.now()
+                        chunks_fetched = 0
+                        
+                        for month_offset in range(0, 13):  # Cover 12 months
+                            if api_calls_this_hour >= MAX_CALLS_PER_HOUR or rate_limit_hit:
+                                break
+                            
+                            chunk_end = current_chunk_end - timedelta(days=month_offset * 30)
+                            chunk_end_str = chunk_end.strftime('%Y-%m-%d')
+                            
+                            try:
+                                # Use /1m period format (gets ~30-31 days)
+                                endpoint = f"https://api.fitbit.com/1/user/-/body/log/weight/date/{chunk_end_str}/1m.json"
+                                response = requests.get(endpoint, headers=headers, timeout=10)
+                                api_calls_this_hour += 1
+                                
+                                if response.status_code == 429:
+                                    rate_limit_hit = True
+                                    break
+                                
+                                if response.status_code == 200:
+                                    data = response.json()
+                                    if 'weight' in data and len(data['weight']) > 0:
+                                        # Process and cache all weight entries
+                                        cached = process_and_cache_daily_metrics(None, 'weight', data, cache)
+                                        phase3_metrics_processed['weight'] += cached
+                                        chunks_fetched += 1
+                                elif response.status_code == 400:
+                                    # Might be out of data range, continue to next chunk
+                                    continue
+                            except Exception as e:
+                                print(f"❌ Error caching Weight chunk {chunk_end_str}: {e}")
+                        
+                        print(f"✅ [3E: Weight] Fetched {chunks_fetched} chunks, cached {phase3_metrics_processed['weight']} dates")
+                    else:
+                        print("✅ [3E: Weight] 100% cached")
+                
                 total_phase3 = sum(phase3_metrics_processed.values())
-                print(f"✅ Phase 3 Complete: {total_phase3} metric-days cached (Sleep={phase3_metrics_processed['sleep']}, HRV={phase3_metrics_processed['hrv']}, BR={phase3_metrics_processed['br']}, Temp={phase3_metrics_processed['temp']})")
+                print(f"✅ Phase 3 Complete: {total_phase3} metric-days cached (Sleep={phase3_metrics_processed['sleep']}, HRV={phase3_metrics_processed['hrv']}, BR={phase3_metrics_processed['br']}, Temp={phase3_metrics_processed['temp']}, Weight={phase3_metrics_processed.get('weight', 0)})")
                 print(f"📊 API Budget Remaining: {MAX_CALLS_PER_HOUR - api_calls_this_hour}")
                 
                 # Break if rate limit hit
