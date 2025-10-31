@@ -1135,21 +1135,19 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                     else:
                         print("✅ [3D: Temperature] 100% cached")
                 
-                # --- 3E: FETCH MISSING WEIGHT DATA (using /1m period format) ---
-                # NOTE: Weight API uses /1m format to get ~30 days in 1 call (more efficient than 28 individual calls)
+                # --- 3E: FETCH MISSING WEIGHT DATA (1 call per cycle, gets ~30 days) ---
                 if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
                     if 'weight' not in phase3_metrics_processed:
                         phase3_metrics_processed['weight'] = 0
                     
                     missing_weight = cache.get_missing_dates(date_range_start, date_range_end, metric_type='weight')
                     if missing_weight:
-                        # Find the newest missing date (most recent data first)
-                        newest_missing = max(missing_weight)
-                        print(f"📥 [3E: Weight] Fetching ~30 days from {newest_missing} using /1m format...")
+                        # Use newest missing date as anchor, /1m gets ~28-31 days in 1 API call
+                        newest_date = max(missing_weight)
+                        print(f"📥 [3E: Weight] Fetching ~28 days from {newest_date}...")
                         
                         try:
-                            # Use /1m period format (gets ~30-31 days in 1 API call)
-                            endpoint = f"https://api.fitbit.com/1/user/-/body/log/weight/date/{newest_missing}/1m.json"
+                            endpoint = f"https://api.fitbit.com/1/user/-/body/log/weight/date/{newest_date}/1m.json"
                             response = requests.get(endpoint, headers=headers, timeout=10)
                             api_calls_this_hour += 1
                             
@@ -1158,14 +1156,12 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                             elif response.status_code == 200:
                                 data = response.json()
                                 if 'weight' in data and len(data['weight']) > 0:
-                                    # Process and cache all weight entries
                                     cached = process_and_cache_daily_metrics(None, 'weight', data, cache)
                                     phase3_metrics_processed['weight'] = cached
-                                    print(f"✅ [3E: Weight] Cached {cached} dates")
-                            elif response.status_code == 400:
-                                print(f"⚠️ [3E: Weight] No data available for this period")
                         except Exception as e:
                             print(f"❌ Error caching Weight: {e}")
+                        
+                        print(f"✅ [3E: Weight] Cached {phase3_metrics_processed['weight']} dates")
                     else:
                         print("✅ [3E: Weight] 100% cached")
                 
