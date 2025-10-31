@@ -145,8 +145,14 @@
    CLIENT_ID=your_client_id_here
    CLIENT_SECRET=your_client_secret_here
    REDIRECT_URL=http://192.168.x.x:5032/
+   DASHBOARD_PASSWORD=your_secure_password_here
+   API_KEY=your_secure_api_key_here
    ```
    > **Note**: Replace `192.168.x.x:5032` with your actual server IP and port
+   > 
+   > **Security**: 
+   > - `DASHBOARD_PASSWORD`: Protects the web dashboard (optional but recommended)
+   > - `API_KEY`: Secures API endpoints for MCP/external access (optional - if not set, API is unprotected)
 
 4. **Start the application**
    ```bash
@@ -171,6 +177,8 @@ services:
       - CLIENT_ID=${CLIENT_ID}
       - CLIENT_SECRET=${CLIENT_SECRET}
       - REDIRECT_URL=${REDIRECT_URL:-http://192.168.13.5:5032/}
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
+      - API_KEY=${API_KEY:-}
       - TZ=America/New_York  # Set your timezone (e.g., America/Chicago, America/Los_Angeles, Europe/London)
 ```
 

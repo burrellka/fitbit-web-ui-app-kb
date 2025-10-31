@@ -42,9 +42,53 @@ Without this setting, the container defaults to UTC, which may cause confusion w
 
 ### Authentication
 
-All API endpoints (except `/api/health`) require an active OAuth session. The API uses the stored OAuth refresh token to authenticate requests automatically.
+All API endpoints (except `/api/health`) require:
+1. **OAuth Session**: An active OAuth session with stored refresh tokens (created via web dashboard login)
+2. **API Key** (Recommended): Set the `API_KEY` environment variable to protect endpoints
 
-**Security Note:** The API endpoints are designed for internal/localhost use. For production deployments with public API access, implement additional authentication (API keys, OAuth, etc.).
+#### API Key Setup
+
+To secure your API endpoints, set an API key in your environment:
+
+```bash
+# In .env file
+API_KEY=your_secure_random_key_here
+```
+
+```yaml
+# In docker-compose.yml
+environment:
+  - API_KEY=${API_KEY:-}
+```
+
+#### Making Authenticated Requests
+
+Include the API key in the `X-API-Key` header:
+
+```bash
+curl -H "X-API-Key: your_secure_random_key_here" \
+     http://localhost:5032/api/data/range?start=2025-10-01&end=2025-10-31
+```
+
+```python
+import requests
+
+headers = {
+    'X-API-Key': 'your_secure_random_key_here'
+}
+
+response = requests.get(
+    'http://localhost:5032/api/data/range',
+    params={'start': '2025-10-01', 'end': '2025-10-31'},
+    headers=headers
+)
+```
+
+**Security Notes:**
+- If `API_KEY` is not set, endpoints are **unprotected** (backward compatibility)
+- A warning will appear in logs if API_KEY is not configured
+- For production/public deployments, **always set API_KEY**
+- Use a strong, random key (e.g., generated via `openssl rand -hex 32`)
 
 ---
 

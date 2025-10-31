@@ -1323,6 +1323,30 @@ server = app.server
 # Configure Flask session for password protection
 server.secret_key = os.environ.get('SECRET_KEY', os.urandom(24).hex())
 DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD', '')
+API_KEY = os.environ.get('API_KEY', '')  # API key for MCP/external access
+
+# API Key authentication decorator
+def require_api_key(f):
+    """Decorator to require API key for endpoint access"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Check for API key in header
+        provided_key = request.headers.get('X-API-Key')
+        
+        # If no API key is configured, allow access (backward compatibility)
+        if not API_KEY:
+            print("⚠️ Warning: API_KEY not configured - API endpoints are unprotected!")
+            return f(*args, **kwargs)
+        
+        # Validate API key
+        if provided_key != API_KEY:
+            return jsonify({
+                'success': False,
+                'error': 'Unauthorized - Invalid or missing API key'
+            }), 401
+        
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Password protection middleware
 @server.before_request
@@ -4602,6 +4626,7 @@ def api_cache_refresh(date):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @server.route('/api/data/sleep/<date>', methods=['GET'])
+@require_api_key
 def api_get_sleep_data(date):
     """Get sleep data for a specific date from cache (refreshes today's data)"""
     try:
@@ -4630,6 +4655,7 @@ def api_get_sleep_data(date):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @server.route('/api/data/metrics/<date>', methods=['GET'])
+@require_api_key
 def api_get_metrics(date):
     """Get all cached metrics for a specific date (refreshes today's data)"""
     try:
@@ -4659,6 +4685,7 @@ def api_get_metrics(date):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @server.route('/api/data/exercise/<date>', methods=['GET'])
+@require_api_key
 def api_get_exercise(date):
     """Get exercise/activity data for a specific date"""
     try:
@@ -4721,6 +4748,7 @@ def api_get_exercise(date):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @server.route('/api/data/range', methods=['GET'])
+@require_api_key
 def api_get_data_range():
     """Get cached data for a date range - optimized for MCP server
     
