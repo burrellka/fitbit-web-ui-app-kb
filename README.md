@@ -50,9 +50,10 @@
 ### Advanced Analytics Features 🆕
 
 #### 🏋️ Exercise Analysis
-- **Exercise Log with Filtering** - Filter workouts by activity type (Running, Cycling, etc.)
-- **Enhanced Exercise Metrics** - Duration, calories, average HR, steps, and distance for each workout
+- **Exercise Log** - View all workouts with comprehensive metrics
+- **Enhanced Exercise Metrics** - Duration, active duration, calories, average HR, steps, and distance for each workout
 - **Activity Type Auto-Detection** - Automatically categorizes all logged exercises
+- **CSV Export** - Download exercise history for external analysis
 
 #### 😴 Sleep Quality Analysis - 3-Tier Scoring System 🆕
 - **Reality Score (Primary)** - Honest, aggressive assessment of sleep quality that matches felt experience

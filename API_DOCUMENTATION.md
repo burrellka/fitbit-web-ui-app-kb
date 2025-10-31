@@ -376,7 +376,163 @@ curl "http://localhost:5032/api/cache-csv?start=2025-10-20&end=2025-10-25&metric
 
 ---
 
-### 8. Flush Cache (Not Yet Implemented)
+### 8. Get Data Range (MCP Optimized) 🆕
+
+**GET** `/api/data/range`
+
+Retrieve cached data for a date range in structured JSON format. This endpoint is optimized for MCP (Model Context Protocol) server integration and returns comprehensive data in a single API call.
+
+**Query Parameters:**
+- `start` (required): Start date (YYYY-MM-DD format)
+- `end` (required): End date (YYYY-MM-DD format)
+- `metrics` (optional): Comma-separated list of metric types
+  - Options: `daily`, `sleep`, `advanced`, `cardio`, `activities`
+  - Default: All metrics (`daily,sleep,advanced,cardio,activities`)
+
+**Limits:**
+- Maximum date range: 365 days
+- Start date must be before or equal to end date
+
+**Response:**
+```json
+{
+  "success": true,
+  "start_date": "2025-10-01",
+  "end_date": "2025-10-31",
+  "total_days": 31,
+  "metrics_included": ["daily", "sleep", "activities"],
+  "data": [
+    {
+      "date": "2025-10-01",
+      "daily": {
+        "steps": 8532,
+        "calories": 2345,
+        "distance_km": 6.8,
+        "distance_mi": 4.23,
+        "floors": 12,
+        "active_zone_minutes": 45,
+        "resting_heart_rate": 58,
+        "fat_burn_minutes": 120,
+        "cardio_minutes": 30,
+        "peak_minutes": 15,
+        "weight_lbs": 175.3,
+        "body_fat_pct": 18.5,
+        "spo2": 97,
+        "eov": 2.3
+      },
+      "sleep": {
+        "fitbit_score": null,
+        "efficiency": 92,
+        "proxy_score": 85,
+        "reality_score": 87,
+        "total_minutes": 445,
+        "deep_minutes": 120,
+        "light_minutes": 230,
+        "rem_minutes": 95,
+        "wake_minutes": 25,
+        "start_time": "2025-09-30T23:30:00"
+      },
+      "advanced": {
+        "hrv_ms": 68,
+        "breathing_rate_bpm": 14.5,
+        "temperature_f": 0.2
+      },
+      "cardio": {
+        "vo2_max": 48.5
+      },
+      "activities": [
+        {
+          "activity_id": 123456789,
+          "name": "Run",
+          "duration_minutes": 35,
+          "active_duration_minutes": 32,
+          "calories": 350,
+          "avg_heart_rate": 145,
+          "steps": 4200,
+          "distance_km": 5.5,
+          "distance_mi": 3.42
+        }
+      ]
+    },
+    {
+      "date": "2025-10-02",
+      "daily": { ... },
+      "sleep": { ... }
+    }
+  ]
+}
+```
+
+**Error Response (Invalid Parameters):**
+```json
+{
+  "success": false,
+  "error": "Missing required parameters: start and end dates"
+}
+```
+
+**Error Response (Invalid Date Range):**
+```json
+{
+  "success": false,
+  "error": "Date range cannot exceed 365 days"
+}
+```
+
+**Examples:**
+
+```bash
+# Get all metrics for October 2025
+curl -H "X-API-Key: your_api_key_here" \
+     "http://localhost:5032/api/data/range?start=2025-10-01&end=2025-10-31"
+
+# Get only daily and sleep metrics
+curl -H "X-API-Key: your_api_key_here" \
+     "http://localhost:5032/api/data/range?start=2025-10-01&end=2025-10-31&metrics=daily,sleep"
+
+# Python example
+import requests
+
+headers = {'X-API-Key': 'your_api_key_here'}
+params = {
+    'start': '2025-10-01',
+    'end': '2025-10-31',
+    'metrics': 'daily,sleep,activities'
+}
+
+response = requests.get(
+    'http://localhost:5032/api/data/range',
+    params=params,
+    headers=headers
+)
+
+data = response.json()
+for day in data['data']:
+    print(f"Date: {day['date']}")
+    if 'daily' in day:
+        print(f"  Steps: {day['daily']['steps']}")
+    if 'sleep' in day:
+        print(f"  Sleep: {day['sleep']['total_minutes']} min")
+```
+
+**Use Cases:**
+- 🤖 **MCP Server Integration** - Retrieve comprehensive health data for LLM analysis
+- 📊 **Bulk Data Export** - Get JSON-structured data for multiple days at once
+- 📈 **Trend Analysis** - Analyze patterns across weeks or months
+- 🔬 **Data Science** - Feed structured data into analytics pipelines
+- 💾 **Efficient Queries** - Single API call instead of multiple per-day requests
+
+**Key Features:**
+- ✅ Returns only cached data (no Fitbit API calls)
+- ✅ Fast bulk retrieval (up to 365 days in one request)
+- ✅ Selective metric inclusion (reduce payload size)
+- ✅ Structured JSON format (easy to parse)
+- ✅ Distance in both km and miles
+- ✅ Includes `active_duration_minutes` for activities
+
+---
+
+### 9. Flush Cache (Not Yet Implemented)
 
 **POST** `/api/cache/flush`
 
@@ -486,9 +642,12 @@ Planned API additions:
 - ✅ GET `/api/data/sleep/<date>` - Implemented (with today auto-refresh)
 - ✅ GET `/api/data/metrics/<date>` - Implemented (with today auto-refresh)
 - ✅ GET `/api/data/exercise/<date>` - Implemented
+- ✅ GET `/api/data/range` - Implemented (bulk date range queries for MCP)
 - ✅ GET `/api/cache/status` - Implemented
 - ✅ POST `/api/cache/flush` - Implemented
 - ✅ POST `/api/cache/refresh/<date>` - Implemented
+- ✅ GET `/api/cache-log` - Implemented (JSON format cache viewer)
+- ✅ GET `/api/cache-csv` - Implemented (CSV export)
 - ⏳ GET `/api/insights/summary` - Planned (AI-generated insights)
 - ⏳ GET `/api/trends/sleep` - Planned (Sleep trend analysis)
 - ⏳ GET `/api/trends/fitness` - Planned (Fitness trend analysis)
