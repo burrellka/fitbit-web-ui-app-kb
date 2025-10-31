@@ -3495,17 +3495,20 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
 
         # Process and cache weight
         weight_cached = 0
-        for entry in response_weight["body-weight"]:
-            date_str = entry['dateTime']
+        for entry in response_weight.get("weight", []):  # FIX: Use "weight" not "body-weight"
+            date_str = entry['date']  # FIX: Use 'date' not 'dateTime'
             # Convert kg to lbs (1 kg = 2.20462 lbs)
             weight_list += [None]*(dates_str_list.index(date_str)-len(weight_list))
-            weight_kg = float(entry['value'])
+            weight_kg = float(entry['weight'])  # FIX: Use 'weight' not 'value'
             weight_lbs = round(weight_kg * 2.20462, 1)
             weight_list.append(weight_lbs)
             
-            # Cache weight
+            # Extract body fat if present
+            body_fat = entry.get('fat')
+            
+            # Cache weight and body fat
             try:
-                cache.set_daily_metrics(date=date_str, weight=weight_lbs)
+                cache.set_daily_metrics(date=date_str, weight=weight_lbs, body_fat=body_fat)
                 weight_cached += 1
             except:
                 pass
