@@ -1,0 +1,6 @@
+# Rebuild the image
+docker-compose build --no-cache
+
+# Tag and push to Docker Hub
+docker tag fitbit-wellness-enhanced:latest brain40/fitbit-wellness-enhanced:latest
+docker push brain40/fitbit-wellness-enhanced:latest

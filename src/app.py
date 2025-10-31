@@ -997,14 +997,43 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                 date_range_start = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
                 date_range_end = datetime.now().strftime('%Y-%m-%d')
                 
-                phase3_metrics_processed = {'sleep': 0, 'hrv': 0, 'br': 0, 'temp': 0}
+                phase3_metrics_processed = {'weight': 0, 'sleep': 0, 'hrv': 0, 'br': 0, 'temp': 0}
                 
-                # --- 3A: FETCH MISSING SLEEP DATA ---
+                # --- 3A: FETCH MISSING WEIGHT DATA FIRST (1 call = ~30 days) ---
+                if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
+                    missing_weight = cache.get_missing_dates(date_range_start, date_range_end, metric_type='weight')
+                    if missing_weight:
+                        newest_date = max(missing_weight)
+                        print(f"📥 [3A: Weight] Fetching ~28 days from {newest_date}...")
+                        
+                        try:
+                            endpoint = f"https://api.fitbit.com/1/user/-/body/log/weight/date/{newest_date}/1m.json"
+                            response = requests.get(endpoint, headers=headers, timeout=10)
+                            api_calls_this_hour += 1
+                            
+                            if response.status_code == 429:
+                                rate_limit_hit = True
+                            elif response.status_code == 200:
+                                data = response.json()
+                                if 'weight' in data and len(data['weight']) > 0:
+                                    cached = process_and_cache_daily_metrics(None, 'weight', data, cache)
+                                    phase3_metrics_processed['weight'] = cached
+                                    print(f"✅ [3A: Weight] Cached {cached} dates")
+                                else:
+                                    print("⚠️ [3A: Weight] No weight data in response")
+                            else:
+                                print(f"⚠️ [3A: Weight] Error {response.status_code}")
+                        except Exception as e:
+                            print(f"❌ [3A: Weight] Error: {e}")
+                    else:
+                        print("✅ [3A: Weight] 100% cached")
+                
+                # --- 3B: FETCH MISSING SLEEP DATA ---
                 if api_calls_this_hour < MAX_CALLS_PER_HOUR:
                     missing_sleep = cache.get_missing_dates(date_range_start, date_range_end, metric_type='sleep')
                     if missing_sleep:
                         dates_to_fetch = list(reversed(missing_sleep))[:28]  # Fetch 28 newest
-                        print(f"📥 [3A: Sleep] Fetching {len(dates_to_fetch)} missing dates...")
+                        print(f"📥 [3B: Sleep] Fetching {len(dates_to_fetch)} missing dates...")
                         for date_str in dates_to_fetch:
                             if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
                                 break
@@ -1045,16 +1074,16 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                                                 break
                             except Exception as e:
                                 print(f"❌ Error caching Sleep for {date_str}: {e}")
-                        print(f"✅ [3A: Sleep] Cached {phase3_metrics_processed['sleep']} dates")
+                        print(f"✅ [3B: Sleep] Cached {phase3_metrics_processed['sleep']} dates")
                     else:
-                        print("✅ [3A: Sleep] 100% cached")
+                        print("✅ [3B: Sleep] 100% cached")
                 
-                # --- 3B: FETCH MISSING HRV DATA ---
+                # --- 3C: FETCH MISSING HRV DATA ---
                 if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
                     missing_hrv = cache.get_missing_dates(date_range_start, date_range_end, metric_type='hrv')
                     if missing_hrv:
                         dates_to_fetch = list(reversed(missing_hrv))[:28]
-                        print(f"📥 [3B: HRV] Fetching {len(dates_to_fetch)} missing dates...")
+                        print(f"📥 [3C: HRV] Fetching {len(dates_to_fetch)} missing dates...")
                         for date_str in dates_to_fetch:
                             if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
                                 break
@@ -1073,16 +1102,16 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                                             phase3_metrics_processed['hrv'] += 1
                             except Exception as e:
                                 print(f"❌ Error caching HRV for {date_str}: {e}")
-                        print(f"✅ [3B: HRV] Cached {phase3_metrics_processed['hrv']} dates")
+                        print(f"✅ [3C: HRV] Cached {phase3_metrics_processed['hrv']} dates")
                     else:
-                        print("✅ [3B: HRV] 100% cached")
+                        print("✅ [3C: HRV] 100% cached")
                 
-                # --- 3C: FETCH MISSING BREATHING RATE DATA ---
+                # --- 3D: FETCH MISSING BREATHING RATE DATA ---
                 if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
                     missing_br = cache.get_missing_dates(date_range_start, date_range_end, metric_type='breathing_rate')
                     if missing_br:
                         dates_to_fetch = list(reversed(missing_br))[:28]
-                        print(f"📥 [3C: Breathing Rate] Fetching {len(dates_to_fetch)} missing dates...")
+                        print(f"📥 [3D: Breathing Rate] Fetching {len(dates_to_fetch)} missing dates...")
                         for date_str in dates_to_fetch:
                             if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
                                 break
@@ -1101,16 +1130,16 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                                             phase3_metrics_processed['br'] += 1
                             except Exception as e:
                                 print(f"❌ Error caching BR for {date_str}: {e}")
-                        print(f"✅ [3C: Breathing Rate] Cached {phase3_metrics_processed['br']} dates")
+                        print(f"✅ [3D: Breathing Rate] Cached {phase3_metrics_processed['br']} dates")
                     else:
-                        print("✅ [3C: Breathing Rate] 100% cached")
+                        print("✅ [3D: Breathing Rate] 100% cached")
                 
-                # --- 3D: FETCH MISSING TEMPERATURE DATA ---
+                # --- 3E: FETCH MISSING TEMPERATURE DATA ---
                 if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
                     missing_temp = cache.get_missing_dates(date_range_start, date_range_end, metric_type='temperature')
                     if missing_temp:
                         dates_to_fetch = list(reversed(missing_temp))[:28]
-                        print(f"📥 [3D: Temperature] Fetching {len(dates_to_fetch)} missing dates...")
+                        print(f"📥 [3E: Temperature] Fetching {len(dates_to_fetch)} missing dates...")
                         for date_str in dates_to_fetch:
                             if api_calls_this_hour >= MAX_CALLS_PER_HOUR:
                                 break
@@ -1131,42 +1160,12 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                                             phase3_metrics_processed['temp'] += 1
                             except Exception as e:
                                 print(f"❌ Error caching Temp for {date_str}: {e}")
-                        print(f"✅ [3D: Temperature] Cached {phase3_metrics_processed['temp']} dates")
+                        print(f"✅ [3E: Temperature] Cached {phase3_metrics_processed['temp']} dates")
                     else:
-                        print("✅ [3D: Temperature] 100% cached")
-                
-                # --- 3E: FETCH MISSING WEIGHT DATA (1 call per cycle, gets ~30 days) ---
-                if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
-                    if 'weight' not in phase3_metrics_processed:
-                        phase3_metrics_processed['weight'] = 0
-                    
-                    missing_weight = cache.get_missing_dates(date_range_start, date_range_end, metric_type='weight')
-                    if missing_weight:
-                        # Use newest missing date as anchor, /1m gets ~28-31 days in 1 API call
-                        newest_date = max(missing_weight)
-                        print(f"📥 [3E: Weight] Fetching ~28 days from {newest_date}...")
-                        
-                        try:
-                            endpoint = f"https://api.fitbit.com/1/user/-/body/log/weight/date/{newest_date}/1m.json"
-                            response = requests.get(endpoint, headers=headers, timeout=10)
-                            api_calls_this_hour += 1
-                            
-                            if response.status_code == 429:
-                                rate_limit_hit = True
-                            elif response.status_code == 200:
-                                data = response.json()
-                                if 'weight' in data and len(data['weight']) > 0:
-                                    cached = process_and_cache_daily_metrics(None, 'weight', data, cache)
-                                    phase3_metrics_processed['weight'] = cached
-                        except Exception as e:
-                            print(f"❌ Error caching Weight: {e}")
-                        
-                        print(f"✅ [3E: Weight] Cached {phase3_metrics_processed['weight']} dates")
-                    else:
-                        print("✅ [3E: Weight] 100% cached")
+                        print("✅ [3E: Temperature] 100% cached")
                 
                 total_phase3 = sum(phase3_metrics_processed.values())
-                print(f"✅ Phase 3 Complete: {total_phase3} metric-days cached (Sleep={phase3_metrics_processed['sleep']}, HRV={phase3_metrics_processed['hrv']}, BR={phase3_metrics_processed['br']}, Temp={phase3_metrics_processed['temp']}, Weight={phase3_metrics_processed.get('weight', 0)})")
+                print(f"✅ Phase 3 Complete: {total_phase3} metric-days cached (Weight={phase3_metrics_processed.get('weight', 0)}, Sleep={phase3_metrics_processed['sleep']}, HRV={phase3_metrics_processed['hrv']}, BR={phase3_metrics_processed['br']}, Temp={phase3_metrics_processed['temp']})")
                 print(f"📊 API Budget Remaining: {MAX_CALLS_PER_HOUR - api_calls_this_hour}")
                 
                 # Break if rate limit hit
