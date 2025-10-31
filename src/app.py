@@ -2515,8 +2515,8 @@ def display_workout_details(selected_date, oauth_token, refresh_token, token_exp
                     html.Span(f"{activity.get('calories', 0)} cal")
                 ]),
                 html.Div([
-                    html.Strong("Cardio Load: "),
-                    html.Span(f"{activity.get('activeDuration', 0) // 60000 if activity.get('activeDuration') else 'N/A'}")
+                    html.Strong("Active Duration: "),
+                    html.Span(f"{activity.get('activeDuration', 0) // 60000 if activity.get('activeDuration') else 'N/A'} min")
                 ]),
                 html.Div([
                     html.Strong("Zone Minutes: "),
