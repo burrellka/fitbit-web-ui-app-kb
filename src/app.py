@@ -1031,63 +1031,69 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
                 if api_calls_this_hour < MAX_CALLS_PER_HOUR and not rate_limit_hit:
                     missing_sleep = cache.get_missing_dates(date_range_start, date_range_end, metric_type='sleep')
                     if missing_sleep:
-                        # Use range endpoint: 1 API call fetches ~30 days of sleep data
-                        newest_date = max(missing_sleep)
-                        oldest_date = min(missing_sleep)
-                        print(f"📥 [3B: Sleep] Fetching from {oldest_date} to {newest_date} (1 API call)...")
+                        # Use range endpoint: 1 API call fetches up to 30 days (API limit is 100 days, we use 30 for consistency)
+                        # Get newest 30 days from missing dates
+                        missing_sleep_sorted = sorted(missing_sleep, reverse=True)  # Newest first
+                        chunk_size = 30
+                        dates_to_fetch = missing_sleep_sorted[:chunk_size]
                         
-                        try:
-                            endpoint = f"https://api.fitbit.com/1.2/user/-/sleep/date/{oldest_date}/{newest_date}.json"
-                            response = requests.get(endpoint, headers=headers, timeout=10)
-                            api_calls_this_hour += 1
+                        if dates_to_fetch:
+                            oldest_date = min(dates_to_fetch)
+                            newest_date = max(dates_to_fetch)
+                            print(f"📥 [3B: Sleep] Fetching {len(dates_to_fetch)} days from {oldest_date} to {newest_date} (1 API call)...")
                             
-                            if response.status_code == 429:
-                                rate_limit_hit = True
-                                print(f"⚠️ [3B: Sleep] Rate limit hit")
-                            elif response.status_code == 200:
-                                data = response.json()
-                                sleep_records = data.get('sleep', [])
-                                print(f"📥 [3B: Sleep] API Response: {len(sleep_records)} sleep records")
+                            try:
+                                endpoint = f"https://api.fitbit.com/1.2/user/-/sleep/date/{oldest_date}/{newest_date}.json"
+                                response = requests.get(endpoint, headers=headers, timeout=10)
+                                api_calls_this_hour += 1
                                 
-                                for sleep_record in sleep_records:
-                                    if sleep_record.get('isMainSleep', True):
-                                        date_str = sleep_record.get('dateOfSleep')
-                                        if not date_str:
-                                            continue
-                                        
-                                        try:
-                                            minutes_asleep = sleep_record.get('minutesAsleep', 0)
-                                            deep_min = sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes', 0)
-                                            rem_min = sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes', 0)
-                                            minutes_awake = sleep_record.get('minutesAwake', 0)
-                                            calculated_scores = calculate_sleep_scores(minutes_asleep, deep_min, rem_min, minutes_awake)
+                                if response.status_code == 429:
+                                    rate_limit_hit = True
+                                    print(f"⚠️ [3B: Sleep] Rate limit hit")
+                                elif response.status_code == 200:
+                                    data = response.json()
+                                    sleep_records = data.get('sleep', [])
+                                    print(f"📥 [3B: Sleep] API Response: {len(sleep_records)} sleep records")
+                                    
+                                    for sleep_record in sleep_records:
+                                        if sleep_record.get('isMainSleep', True):
+                                            date_str = sleep_record.get('dateOfSleep')
+                                            if not date_str:
+                                                continue
                                             
-                                            # Note: Fitbit's sleep score doesn't work, so we only use our calculated scores
-                                            cache.set_sleep_score(
-                                                date=date_str,
-                                                sleep_score=None,  # Fitbit sleep score doesn't work
-                                                efficiency=sleep_record.get('efficiency'),
-                                                proxy_score=calculated_scores['proxy_score'],
-                                                reality_score=calculated_scores['reality_score'],
-                                                total_sleep=minutes_asleep,
-                                                deep=deep_min,
-                                                light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
-                                                rem=rem_min,
-                                                wake=minutes_awake,
-                                                start_time=sleep_record.get('startTime'),
-                                                sleep_data_json=str(sleep_record)
-                                            )
-                                            phase3_metrics_processed['sleep'] += 1
-                                        except Exception as e:
-                                            print(f"❌ Error caching sleep for {date_str}: {e}")
-                                
-                                print(f"✅ [3B: Sleep] Cached {phase3_metrics_processed['sleep']} dates")
-                            else:
-                                print(f"⚠️ [3B: Sleep] Error {response.status_code}: {response.text[:200]}")
-                        except Exception as e:
-                            print(f"❌ [3B: Sleep] Error: {e}")
-                            import traceback
-                            traceback.print_exc()
+                                            try:
+                                                minutes_asleep = sleep_record.get('minutesAsleep', 0)
+                                                deep_min = sleep_record.get('levels', {}).get('summary', {}).get('deep', {}).get('minutes', 0)
+                                                rem_min = sleep_record.get('levels', {}).get('summary', {}).get('rem', {}).get('minutes', 0)
+                                                minutes_awake = sleep_record.get('minutesAwake', 0)
+                                                calculated_scores = calculate_sleep_scores(minutes_asleep, deep_min, rem_min, minutes_awake)
+                                                
+                                                # Note: Fitbit's sleep score doesn't work, so we only use our calculated scores
+                                                cache.set_sleep_score(
+                                                    date=date_str,
+                                                    sleep_score=None,  # Fitbit sleep score doesn't work
+                                                    efficiency=sleep_record.get('efficiency'),
+                                                    proxy_score=calculated_scores['proxy_score'],
+                                                    reality_score=calculated_scores['reality_score'],
+                                                    total_sleep=minutes_asleep,
+                                                    deep=deep_min,
+                                                    light=sleep_record.get('levels', {}).get('summary', {}).get('light', {}).get('minutes'),
+                                                    rem=rem_min,
+                                                    wake=minutes_awake,
+                                                    start_time=sleep_record.get('startTime'),
+                                                    sleep_data_json=str(sleep_record)
+                                                )
+                                                phase3_metrics_processed['sleep'] += 1
+                                            except Exception as e:
+                                                print(f"❌ Error caching sleep for {date_str}: {e}")
+                                    
+                                    print(f"✅ [3B: Sleep] Cached {phase3_metrics_processed['sleep']} dates")
+                                else:
+                                    print(f"⚠️ [3B: Sleep] Error {response.status_code}: {response.text[:200]}")
+                            except Exception as e:
+                                print(f"❌ [3B: Sleep] Error: {e}")
+                                import traceback
+                                traceback.print_exc()
                     else:
                         print("✅ [3B: Sleep] 100% cached (365 days)")
                 
