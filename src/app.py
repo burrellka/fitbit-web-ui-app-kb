@@ -3119,6 +3119,9 @@ Input('submit-button', 'n_clicks'),
 State('my-date-picker-range', 'start_date'), State('my-date-picker-range', 'end_date'), State('oauth-token', 'data'),
 prevent_initial_call=True)
 def update_output(n_clicks, start_date, end_date, oauth_token):
+    print(f"🎯 UPDATE_OUTPUT CALLBACK FIRED! n_clicks={n_clicks}")
+    print(f"🎯 start_date={start_date}, end_date={end_date}, oauth_token present={oauth_token is not None}")
+    
     # 🐞 FIX: Removed fragile global variables and clear() calls.
     # global exercise_data_store, sleep_detail_data_store
     # exercise_data_store.clear()
@@ -3127,8 +3130,18 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     # Advanced metrics now always enabled with smart caching!
     advanced_metrics_enabled = ['advanced']  # Always enabled
 
-    start_date = datetime.fromisoformat(start_date).strftime("%Y-%m-%d")
-    end_date = datetime.fromisoformat(end_date).strftime("%Y-%m-%d")
+    try:
+        start_date = datetime.fromisoformat(start_date).strftime("%Y-%m-%d")
+        end_date = datetime.fromisoformat(end_date).strftime("%Y-%m-%d")
+    except Exception as e:
+        print(f"❌ Error parsing dates: {e}")
+        print(f"   start_date type: {type(start_date)}, value: {start_date}")
+        print(f"   end_date type: {type(end_date)}, value: {end_date}")
+        raise
+
+    if not oauth_token:
+        print("❌ No oauth_token in update_output!")
+        raise ValueError("No OAuth token provided")
 
     headers = {
         "Authorization": "Bearer " + oauth_token,
