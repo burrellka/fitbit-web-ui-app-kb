@@ -197,10 +197,10 @@ services:
       - ./logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5033/api/health"]
-      interval: 30s
+      interval: 60s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 120s
 ```
 
 > **📦 Volume Mounts**: The `volumes` section ensures your cached Fitbit data (SQLite database at `./data/data_cache.db`) and logs persist across container rebuilds and restarts. 
