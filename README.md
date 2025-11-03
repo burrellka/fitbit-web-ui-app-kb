@@ -157,7 +157,7 @@
 
 4. **Create data directories** (for persistent storage)
    ```bash
-   mkdir -p data/cache data/tokens logs
+   mkdir -p data logs
    ```
 
 5. **Start the application**
@@ -190,13 +190,12 @@ services:
       - API_KEY=${API_KEY:-}
       - TZ=America/New_York  # Set your timezone (e.g., America/Chicago, America/Los_Angeles, Europe/London)
     volumes:
-      # Persist cached data, tokens, and logs across container rebuilds
-      - ./data/cache:/app/data/cache
-      - ./data/tokens:/app/data/tokens
+      # Persist cache database and logs across container rebuilds
+      - ./data/data_cache.db:/app/data_cache.db
       - ./logs:/app/logs
 ```
 
-> **📦 Volume Mounts**: The `volumes` section ensures your cached Fitbit data, OAuth tokens, and logs persist across container rebuilds and restarts. Data is stored in `./data/cache`, `./data/tokens`, and `./logs` on your host machine.
+> **📦 Volume Mounts**: The `volumes` section ensures your cached Fitbit data (SQLite database) and logs persist across container rebuilds and restarts. Data is stored in `./data/data_cache.db` and `./logs` on your host machine.
 
 ## Legacy Self-Hosting (Manual Token Entry)
 

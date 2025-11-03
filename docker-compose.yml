@@ -13,7 +13,6 @@ services:
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
       - API_KEY=${API_KEY:-}
     volumes:
-      # Persist cached data, tokens, and logs across container rebuilds
-      - ./data/cache:/app/data/cache
-      - ./data/tokens:/app/data/tokens
+      # Persist cache database and logs across container rebuilds
+      - ./data/data_cache.db:/app/data_cache.db
       - ./logs:/app/logs

@@ -4046,10 +4046,14 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         fig_body_fat = {}
         body_fat_summary_table = html.P("No body fat % data available", style={'text-align': 'center', 'color': '#888'})
     fig_spo2 = px.scatter(df_merged, x="Date", y="SPO2", color_discrete_sequence=["#983faa"], title=f"<b>SPO2 Percentage<br><br><sup>Overall average : {spo2_avg['overall']}% | Last 30d average : {spo2_avg['30d']}% </sup></b><br><br><br>", range_y=(90,100), labels={'SPO2':"SpO2(%)"})
-    if df_merged["SPO2"].dtype != object:
-        fig_spo2.add_annotation(x=df_merged.iloc[df_merged["SPO2"].idxmax()]["Date"], y=df_merged["SPO2"].max(), text=str(df_merged["SPO2"].max())+"%", showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
-        fig_spo2.add_annotation(x=df_merged.iloc[df_merged["SPO2"].idxmin()]["Date"], y=df_merged["SPO2"].min(), text=str(df_merged["SPO2"].min())+"%", showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
-    fig_spo2.add_hline(y=df_merged["SPO2"].mean(), line_dash="dot",annotation_text="Average : " + str(round(df_merged["SPO2"].mean(), 1)) + "%", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
+    # Safety check: Only add annotations if we have valid SpO2 data
+    if df_merged["SPO2"].dtype != object and df_merged["SPO2"].notna().any() and len(df_merged[df_merged["SPO2"].notna()]) > 0:
+        valid_spo2 = df_merged[df_merged["SPO2"].notna()]
+        if len(valid_spo2) > 0:
+            fig_spo2.add_annotation(x=valid_spo2.loc[valid_spo2["SPO2"].idxmax(), "Date"], y=valid_spo2["SPO2"].max(), text=str(valid_spo2["SPO2"].max())+"%", showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
+            fig_spo2.add_annotation(x=valid_spo2.loc[valid_spo2["SPO2"].idxmin(), "Date"], y=valid_spo2["SPO2"].min(), text=str(valid_spo2["SPO2"].min())+"%", showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
+    if df_merged["SPO2"].notna().any() and len(df_merged[df_merged["SPO2"].notna()]) > 0:
+        fig_spo2.add_hline(y=df_merged["SPO2"].mean(), line_dash="dot",annotation_text="Average : " + str(round(df_merged["SPO2"].mean(), 1)) + "%", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
     fig_spo2.update_traces(marker_size=6)
     spo2_summary_df = calculate_table_data(df_merged, "SPO2")
     spo2_summary_table = dash_table.DataTable(spo2_summary_df.to_dict('records'), [{"name": i, "id": i} for i in spo2_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#8d3a18','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
