@@ -208,8 +208,35 @@ def fetch_todays_stats(oauth_token, cache_manager):
             except Exception as e:
                 print(f"❌ Error fetching sleep: {e}")
             
-            # Note: Activities are fetched by the background cache builder
-            # We don't fetch them here to avoid complexity with activity caching
+            # Fetch activities for today
+            try:
+                activities_response = requests.get(
+                    f"https://api.fitbit.com/1/user/-/activities/date/{today}.json",
+                    headers=headers,
+                    timeout=10
+                )
+                metrics_fetched['api_calls'] += 1
+                if activities_response.status_code == 200:
+                    activities_data = activities_response.json()
+                    if 'activities' in activities_data:
+                        for activity in activities_data['activities']:
+                            # Cache activity using set_activity method
+                            cache_manager.set_activity(
+                                activity_id=str(activity.get('logId')),
+                                date=today,
+                                activity_name=activity.get('activityName', 'Unknown'),
+                                duration_ms=activity.get('duration'),
+                                calories=activity.get('calories'),
+                                avg_heart_rate=activity.get('averageHeartRate'),
+                                steps=activity.get('steps'),
+                                distance=activity.get('distance', {}).get('value') if isinstance(activity.get('distance'), dict) else activity.get('distance'),
+                                activity_data_json=json.dumps(activity)
+                            )
+                    print(f"✅ Fetched activities")
+            except Exception as e:
+                print(f"❌ Error fetching activities: {e}")
+                import traceback
+                traceback.print_exc()
             
             metrics_fetched['success'] = True
             print(f"✅ TODAY's stats fetched and cached ({metrics_fetched['api_calls']} API calls)")
