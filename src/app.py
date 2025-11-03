@@ -208,22 +208,8 @@ def fetch_todays_stats(oauth_token, cache_manager):
             except Exception as e:
                 print(f"❌ Error fetching sleep: {e}")
             
-            # Fetch activities
-            try:
-                activities_response = requests.get(
-                    f"https://api.fitbit.com/1/user/-/activities/date/{today}.json",
-                    headers=headers,
-                    timeout=10
-                )
-                metrics_fetched['api_calls'] += 1
-                if activities_response.status_code == 200:
-                    activities_data = activities_response.json()
-                    if 'activities' in activities_data:
-                        for activity in activities_data['activities']:
-                            cache_manager.cache_activity(activity)
-                    print(f"✅ Fetched activities")
-            except Exception as e:
-                print(f"❌ Error fetching activities: {e}")
+            # Note: Activities are fetched by the background cache builder
+            # We don't fetch them here to avoid complexity with activity caching
             
             metrics_fetched['success'] = True
             print(f"✅ TODAY's stats fetched and cached ({metrics_fetched['api_calls']} API calls)")
