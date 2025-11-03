@@ -4916,10 +4916,11 @@ def api_get_metrics(date):
             print(f"🔄 MCP API: Refreshing TODAY's metrics ({date})...")
             oauth_token = session.get('oauth_token')
             if oauth_token:
-                headers = {"Authorization": f"Bearer {oauth_token}", "Accept": "application/json"}
-                # Refresh sleep data
-                populate_sleep_score_cache([date], headers, force_refresh=True)
-                # Note: Advanced metrics (HRV, BR, Temp) will be refreshed by background builder
+                fetch_result = fetch_todays_stats(oauth_token, cache)
+                if fetch_result['success']:
+                    print(f"✅ MCP API: TODAY's data refreshed ({fetch_result['api_calls']} API calls)")
+                else:
+                    print(f"⚠️ MCP API: Failed to refresh TODAY's data")
         
         sleep_data = cache.get_sleep_data(date)
         advanced_metrics = cache.get_advanced_metrics(date)
