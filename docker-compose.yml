@@ -18,6 +18,14 @@ services:
       - REDIRECT_URL=${REDIRECT_URL:-http://192.168.13.5:5032/}
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
       - API_KEY=${API_KEY:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Log Level Options:
+      # - CRITICAL/FATAL: Only fatal errors that crash the app (least verbose)
+      # - ERROR: Serious errors that don't crash the app
+      # - WARN/WARNING: Potential issues, fallback settings, deprecation warnings
+      # - INFO: Normal operational messages (DEFAULT - recommended for production)
+      # - DEBUG: Detailed diagnostic info for troubleshooting (verbose)
+      # - TRACE: Step-by-step execution details (most verbose - includes all [CACHE_DEBUG] messages)
     volumes:
       # Persist cache database and logs across container rebuilds
       # Note: Mount parent directory, not the file directly (Docker creates directories for non-existent files)

@@ -29,17 +29,41 @@ import sqlite3
 log_dir = '/app/logs'
 os.makedirs(log_dir, exist_ok=True)
 
+# Get log level from environment variable (default: INFO)
+log_level_str = os.environ.get('LOG_LEVEL', 'INFO').upper()
+log_level_map = {
+    'CRITICAL': logging.CRITICAL,  # 50 - Fatal errors, app will crash
+    'FATAL': logging.CRITICAL,     # Alias for CRITICAL
+    'ERROR': logging.ERROR,         # 40 - Errors that don't crash the app
+    'WARN': logging.WARNING,        # 30 - Warnings, potential issues
+    'WARNING': logging.WARNING,     # Alias for WARN
+    'INFO': logging.INFO,           # 20 - Normal operational messages
+    'DEBUG': logging.DEBUG,         # 10 - Detailed diagnostic info
+    'TRACE': 5                      # 5 - Most verbose, step-by-step execution
+}
+
+# Add TRACE level if not exists
+if not hasattr(logging, 'TRACE'):
+    logging.TRACE = 5
+    logging.addLevelName(5, 'TRACE')
+    def trace(self, message, *args, **kwargs):
+        if self.isEnabledFor(5):
+            self._log(5, message, args, **kwargs)
+    logging.Logger.trace = trace
+
+log_level = log_level_map.get(log_level_str, logging.INFO)
+
 # Create rotating file handler
 file_handler = RotatingFileHandler(
     os.path.join(log_dir, 'fitbit-app.log'),
     maxBytes=50 * 1024 * 1024,  # 50MB
     backupCount=3  # Keep 3 backup files
 )
-file_handler.setLevel(logging.INFO)
+file_handler.setLevel(log_level)
 
 # Create console handler (still show in Docker logs too)
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
+console_handler.setLevel(log_level)
 
 # Create formatter
 formatter = logging.Formatter(
@@ -51,9 +75,12 @@ console_handler.setFormatter(formatter)
 
 # Configure root logger
 root_logger = logging.getLogger()
-root_logger.setLevel(logging.INFO)
+root_logger.setLevel(log_level)
 root_logger.addHandler(file_handler)
 root_logger.addHandler(console_handler)
+
+# Log the configured level on startup
+print(f"🔧 Log level set to: {log_level_str} ({log_level})")
 
 log = logging.getLogger(__name__)
 

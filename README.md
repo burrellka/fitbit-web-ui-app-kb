@@ -154,6 +154,15 @@
    > **Security**: 
    > - `DASHBOARD_PASSWORD`: Protects the web dashboard (optional but recommended)
    > - `API_KEY`: Secures API endpoints for MCP/external access (optional - if not set, API is unprotected)
+   > 
+   > **Logging**:
+   > - `LOG_LEVEL`: Controls log verbosity (default: `INFO`)
+   >   - `CRITICAL/FATAL`: Only fatal errors (least verbose)
+   >   - `ERROR`: Serious errors that don't crash the app
+   >   - `WARN/WARNING`: Warnings and potential issues
+   >   - `INFO`: Normal operational messages (recommended for production)
+   >   - `DEBUG`: Detailed diagnostic info (verbose)
+   >   - `TRACE`: Step-by-step execution (most verbose, includes all debug messages)
 
 4. **Create data directories** (for persistent storage)
    ```bash
@@ -195,6 +204,7 @@ services:
       - REDIRECT_URL=${REDIRECT_URL:-http://192.168.13.5:5032/}
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
       - API_KEY=${API_KEY:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}  # Options: CRITICAL, ERROR, WARN, INFO, DEBUG, TRACE
       - TZ=America/New_York  # Set your timezone (e.g., America/Chicago, America/Los_Angeles, Europe/London)
     volumes:
       # Persist cache database and logs across container rebuilds
