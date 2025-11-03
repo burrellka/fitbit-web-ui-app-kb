@@ -3516,53 +3516,38 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             
             # Dates (already in dates_str_list, just append to dates_list)
             dates_list.append(datetime.strptime(date_str, '%Y-%m-%d'))
-        
-        # Create dummy response structures (won't be used in processing)
-        response_heartrate = {"activities-heart": []}
-        response_steps = {"activities-steps": []}
-        response_weight = {"weight": []}
-        response_spo2 = []
-        response_calories = {"activities-calories": []}
-        response_distance = {"activities-distance": []}
-        response_floors = {"activities-floors": []}
-        response_azm = {"activities-active-zone-minutes": []}
-        response_hrv = {"hrv": []}
-        response_breathing = {"br": []}
-        response_temperature = {"tempSkin": []}
-        response_cardio_fitness = {"cardioScore": []}
-        
-        # 🐞 FIX: Load activities from cache (CRITICAL - was missing!)
-        print("📥 Loading activities from cache...")
-        response_activities = {"activities": []}
-        total_activities = 0
-        
-        for date_str in dates_str_list:
-            activities_for_date = cache.get_activities(date_str)
-            for act in activities_for_date:
-                # Try to parse the full activity JSON if available
-                try:
-                    activity_json = act.get('activity_data_json')
-                    if activity_json:
-                        full_activity = json.loads(activity_json)
-                        # Use the full activity data from cache
-                        response_activities['activities'].append(full_activity)
-                    else:
-                        # Fallback: Reconstruct from basic fields
-                        activity_dict = {
-                            'logId': act.get('activity_id'),
-                            'activityName': act.get('activity_name'),
-                            'startTime': f"{date_str}T00:00:00.000",
-                            'duration': act.get('duration_ms'),
-                            'calories': act.get('calories'),
-                            'averageHeartRate': act.get('avg_heart_rate'),
-                            'steps': act.get('steps'),
-                            'distance': act.get('distance')
-                        }
-                        response_activities['activities'].append(activity_dict)
-                    total_activities += 1
-                except (json.JSONDecodeError, TypeError) as e:
-                    print(f"⚠️ Warning: Could not parse activity JSON for {date_str}: {e}")
-                    # Fallback to basic reconstruction
+    
+    # Create dummy response structures (won't be used in processing)
+    response_heartrate = {"activities-heart": []}
+    response_steps = {"activities-steps": []}
+    response_weight = {"weight": []}
+    response_spo2 = []
+    response_calories = {"activities-calories": []}
+    response_distance = {"activities-distance": []}
+    response_floors = {"activities-floors": []}
+    response_azm = {"activities-active-zone-minutes": []}
+    response_hrv = {"hrv": []}
+    response_breathing = {"br": []}
+    response_temperature = {"tempSkin": []}
+    response_cardio_fitness = {"cardioScore": []}
+    
+    # 🐞 FIX: Load activities from cache (CRITICAL - was missing!)
+    print("📥 Loading activities from cache...")
+    response_activities = {"activities": []}
+    total_activities = 0
+    
+    for date_str in dates_str_list:
+        activities_for_date = cache.get_activities(date_str)
+        for act in activities_for_date:
+            # Try to parse the full activity JSON if available
+            try:
+                activity_json = act.get('activity_data_json')
+                if activity_json:
+                    full_activity = json.loads(activity_json)
+                    # Use the full activity data from cache
+                    response_activities['activities'].append(full_activity)
+                else:
+                    # Fallback: Reconstruct from basic fields
                     activity_dict = {
                         'logId': act.get('activity_id'),
                         'activityName': act.get('activity_name'),
@@ -3574,9 +3559,24 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                         'distance': act.get('distance')
                     }
                     response_activities['activities'].append(activity_dict)
-                    total_activities += 1
-        
-        print(f"✅ Loaded {total_activities} activities from cache")
+                total_activities += 1
+            except (json.JSONDecodeError, TypeError) as e:
+                print(f"⚠️ Warning: Could not parse activity JSON for {date_str}: {e}")
+                # Fallback to basic reconstruction
+                activity_dict = {
+                    'logId': act.get('activity_id'),
+                    'activityName': act.get('activity_name'),
+                    'startTime': f"{date_str}T00:00:00.000",
+                    'duration': act.get('duration_ms'),
+                    'calories': act.get('calories'),
+                    'averageHeartRate': act.get('avg_heart_rate'),
+                    'steps': act.get('steps'),
+                    'distance': act.get('distance')
+                }
+                response_activities['activities'].append(activity_dict)
+                total_activities += 1
+    
+    print(f"✅ Loaded {total_activities} activities from cache")
     
     # Create dummy response structures (not used since we read from cache)
     response_heartrate = {"activities-heart": []}
