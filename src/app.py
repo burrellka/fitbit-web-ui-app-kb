@@ -1607,10 +1607,12 @@ def refresh_access_token(refresh_token):
             print("Token refreshed successfully!")
             return new_access_token, new_refresh_token, expiry_time
         else:
-            print("Failed to refresh token")
+            print(f"❌ Failed to refresh token. Status: {token_response.status_code}, Response: {token_response_json}")
             return None, None, None
     except Exception as e:
-        print(f"Error refreshing token: {e}")
+        print(f"❌ Error refreshing token: {e}")
+        import traceback
+        traceback.print_exc()
         return None, None, None
 
 app.layout = html.Div(children=[
