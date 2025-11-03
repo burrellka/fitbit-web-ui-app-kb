@@ -165,7 +165,8 @@
    docker-compose up -d
    ```
 
-6. **Access the app** at `http://192.168.13.5:5032/` (or your configured URL)
+6. **Access the dashboard** at `http://192.168.13.5:5033/` (main app)
+   - OAuth callback URL should still be `http://192.168.13.5:5032/` in your Fitbit app settings
 
 7. **Login** - Click "Login to FitBit" button and authorize the app
 
@@ -180,7 +181,8 @@ services:
     image: fitbit-wellness-enhanced:latest
     container_name: fitbit-report-app-enhanced
     ports:
-      - "5032:80"
+      - "5032:5032"  # OAuth callback
+      - "5033:5033"  # Main dashboard
     restart: unless-stopped
     environment:
       - CLIENT_ID=${CLIENT_ID}
@@ -193,9 +195,17 @@ services:
       # Persist cache database and logs across container rebuilds
       - ./data/data_cache.db:/app/data_cache.db
       - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5033/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 ```
 
 > **📦 Volume Mounts**: The `volumes` section ensures your cached Fitbit data (SQLite database) and logs persist across container rebuilds and restarts. Data is stored in `./data/data_cache.db` and `./logs` on your host machine.
+> 
+> **🏥 Healthcheck**: The healthcheck monitors the main dashboard on port 5033 every 30 seconds to ensure the app is responsive.
 
 ## Legacy Self-Hosting (Manual Token Entry)
 
