@@ -14,7 +14,7 @@ import base64
 import os
 
 class FitbitCache:
-    def __init__(self, db_path='/app/data_cache.db'):
+    def __init__(self, db_path='/app/data/data_cache.db'):
         # Ensure the directory exists
         db_dir = os.path.dirname(db_path)
         if db_dir and not os.path.exists(db_dir):

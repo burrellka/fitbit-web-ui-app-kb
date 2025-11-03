@@ -193,7 +193,7 @@ services:
       - TZ=America/New_York  # Set your timezone (e.g., America/Chicago, America/Los_Angeles, Europe/London)
     volumes:
       # Persist cache database and logs across container rebuilds
-      - ./data/data_cache.db:/app/data_cache.db
+      - ./data:/app/data
       - ./logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5033/api/health"]
@@ -203,7 +203,7 @@ services:
       start_period: 40s
 ```
 
-> **📦 Volume Mounts**: The `volumes` section ensures your cached Fitbit data (SQLite database) and logs persist across container rebuilds and restarts. Data is stored in `./data/data_cache.db` and `./logs` on your host machine.
+> **📦 Volume Mounts**: The `volumes` section ensures your cached Fitbit data (SQLite database at `./data/data_cache.db`) and logs persist across container rebuilds and restarts. 
 > 
 > **🏥 Healthcheck**: The healthcheck monitors the main dashboard on port 5033 every 30 seconds to ensure the app is responsive.
 
