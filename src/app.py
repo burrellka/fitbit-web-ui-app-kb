@@ -4191,8 +4191,9 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         fig_sleep_minutes.add_annotation(x=df_merged.iloc[df_merged["Total Sleep Minutes"].idxmin()]["Date"], y=df_merged["Total Sleep Minutes"].min(), text=str(format_minutes(df_merged["Total Sleep Minutes"].min())), showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
         fig_sleep_minutes.add_hline(y=df_merged["Total Sleep Minutes"].mean(), line_dash="dot",annotation_text="Average : " + str(format_minutes(safe_avg(df_merged["Total Sleep Minutes"].mean()))), annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
     # Set range slider - handle short date ranges
-    range_start = dates_str_list[max(-30, -len(dates_str_list))]
-    fig_sleep_minutes.update_xaxes(rangeslider_visible=True,range=[range_start, dates_str_list[-1]],rangeslider_range=[dates_str_list[0], dates_str_list[-1]])
+    if len(dates_str_list) > 0:
+        range_start = dates_str_list[max(-30, -len(dates_str_list))]
+        fig_sleep_minutes.update_xaxes(rangeslider_visible=True,range=[range_start, dates_str_list[-1]],rangeslider_range=[dates_str_list[0], dates_str_list[-1]])
     sleep_summary_df = calculate_table_data(df_merged, "Total Sleep Minutes")
     sleep_summary_table = dash_table.DataTable(sleep_summary_df.to_dict('records'), [{"name": i, "id": i} for i in sleep_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#636efa','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
     fig_sleep_regularity = px.bar(df_merged, x="Date", y="Total Sleep Seconds", base="Sleep Start Time Seconds", title="<b>Sleep Regularity<br><br><sup>The chart time here is always in local time ( Independent of timezone changes )</sup></b>", labels={"Total Sleep Seconds":"Time of Day ( HH:MM )"})
