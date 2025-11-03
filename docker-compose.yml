@@ -12,3 +12,7 @@ services:
       - REDIRECT_URL=${REDIRECT_URL:-http://192.168.13.5:5032/}
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
       - API_KEY=${API_KEY:-}
+    volumes:
+      # Persist cached data and tokens across container rebuilds
+      - ./data/cache:/app/data/cache
+      - ./data/tokens:/app/data/tokens

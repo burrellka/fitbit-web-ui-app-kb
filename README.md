@@ -155,22 +155,30 @@
    > - `DASHBOARD_PASSWORD`: Protects the web dashboard (optional but recommended)
    > - `API_KEY`: Secures API endpoints for MCP/external access (optional - if not set, API is unprotected)
 
-4. **Start the application**
+4. **Create data directories** (for persistent storage)
+   ```bash
+   mkdir -p data/cache data/tokens
+   ```
+
+5. **Start the application**
    ```bash
    docker-compose up -d
    ```
 
-5. **Access the app** at `http://192.168.13.5:5032/` (or your configured URL)
+6. **Access the app** at `http://192.168.13.5:5032/` (or your configured URL)
 
-6. **Login** - Click "Login to FitBit" button and authorize the app
+7. **Login** - Click "Login to FitBit" button and authorize the app
+
+8. **Start Cache Builder** - Click "START CACHE" button to begin populating historical data
 
 ### Docker Compose Configuration
 
 ```yaml
 services:
-  fitbit-ui:
+  fitbit-ui-enhanced:
     build: .
-    container_name: fitbit-report-app
+    image: fitbit-wellness-enhanced:latest
+    container_name: fitbit-report-app-enhanced
     ports:
       - "5032:80"
     restart: unless-stopped
@@ -181,7 +189,13 @@ services:
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
       - API_KEY=${API_KEY:-}
       - TZ=America/New_York  # Set your timezone (e.g., America/Chicago, America/Los_Angeles, Europe/London)
+    volumes:
+      # Persist cached data and tokens across container rebuilds
+      - ./data/cache:/app/data/cache
+      - ./data/tokens:/app/data/tokens
 ```
+
+> **📦 Volume Mounts**: The `volumes` section ensures your cached Fitbit data and OAuth tokens persist across container rebuilds and restarts. Data is stored in `./data/cache` and `./data/tokens` on your host machine.
 
 ## Legacy Self-Hosting (Manual Token Entry)
 

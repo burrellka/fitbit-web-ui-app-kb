@@ -595,11 +595,12 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
             print("📍 PHASE 1: Range-Based Endpoints (Single call for entire history)")
             print("-" * 60)
             
-            # Determine date range: last 365 days
+            # Determine date range: last 730 days (2 years of historical data)
             end_date = datetime.now()
-            start_date = end_date - timedelta(days=365)
+            start_date = end_date - timedelta(days=730)
             start_date_str = start_date.strftime('%Y-%m-%d')
             end_date_str = end_date.strftime('%Y-%m-%d')
+            print(f"📅 Fetching range: {start_date_str} to {end_date_str} (730 days)")
             
             # Generate master date list for caching alignment
             dates_str_list = []
@@ -2987,6 +2988,17 @@ def calculate_table_data(df, measurement_name):
         'Max ' + measurement_name : [],
         'Min ' + measurement_name : []
     }
+    
+    # Safety check: return empty table if DataFrame is empty
+    if len(df) == 0 or df.empty:
+        # Return a DataFrame with the same structure but no data rows
+        return pd.DataFrame({
+            'Period': [],
+            'Average ' + measurement_name: [],
+            'Max ' + measurement_name: [],
+            'Min ' + measurement_name: []
+        })
+    
     last_date = df.head(1)['Date'].values[0]
     for period in [30, 90, 180, 365]:
         end_date = last_date
@@ -3974,10 +3986,14 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         weight_header_text = f"<b>Weight<br><br><sup>Overall average : {weight_avg['overall']} lbs | Last 30d average : {weight_avg['30d']} lbs</sup></b><br><br><br>"
     
     fig_weight = px.line(df_merged, x="Date", y="weight", line_shape="spline", color_discrete_sequence=["#6b3908"], title=weight_header_text, labels={"weight": "Weight (lbs)"})
-    if df_merged["weight"].dtype != object:
-        fig_weight.add_annotation(x=df_merged.iloc[df_merged["weight"].idxmax()]["Date"], y=df_merged["weight"].max(), text=str(df_merged["weight"].max()) + " lbs", showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
-        fig_weight.add_annotation(x=df_merged.iloc[df_merged["weight"].idxmin()]["Date"], y=df_merged["weight"].min(), text=str(df_merged["weight"].min()) + " lbs", showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
-    fig_weight.add_hline(y=round(df_merged["weight"].mean(),1), line_dash="dot",annotation_text="Average : " + str(round(df_merged["weight"].mean(), 1)) + " lbs", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
+    # Safety check: Only add annotations if we have valid weight data
+    if df_merged["weight"].dtype != object and df_merged["weight"].notna().any() and len(df_merged[df_merged["weight"].notna()]) > 0:
+        valid_weight = df_merged[df_merged["weight"].notna()]
+        if len(valid_weight) > 0:
+            fig_weight.add_annotation(x=valid_weight.loc[valid_weight["weight"].idxmax(), "Date"], y=valid_weight["weight"].max(), text=str(valid_weight["weight"].max()) + " lbs", showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
+            fig_weight.add_annotation(x=valid_weight.loc[valid_weight["weight"].idxmin(), "Date"], y=valid_weight["weight"].min(), text=str(valid_weight["weight"].min()) + " lbs", showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
+    if df_merged["weight"].notna().any() and len(df_merged[df_merged["weight"].notna()]) > 0:
+        fig_weight.add_hline(y=round(df_merged["weight"].mean(),1), line_dash="dot",annotation_text="Average : " + str(round(df_merged["weight"].mean(), 1)) + " lbs", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
     weight_summary_df = calculate_table_data(df_merged, "weight")
     weight_summary_table = dash_table.DataTable(weight_summary_df.to_dict('records'), [{"name": i, "id": i} for i in weight_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#4c3b7d','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
     
