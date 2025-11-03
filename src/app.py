@@ -2,6 +2,7 @@
 import os
 import base64
 import logging
+from logging.handlers import RotatingFileHandler
 import requests
 import dash, requests
 from dash import dcc
@@ -24,7 +25,69 @@ import sqlite3
 
 # %%
 
+# Configure file logging with rotation (50MB x 3 files = 150MB max)
+log_dir = '/app/logs'
+os.makedirs(log_dir, exist_ok=True)
+
+# Create rotating file handler
+file_handler = RotatingFileHandler(
+    os.path.join(log_dir, 'fitbit-app.log'),
+    maxBytes=50 * 1024 * 1024,  # 50MB
+    backupCount=3  # Keep 3 backup files
+)
+file_handler.setLevel(logging.INFO)
+
+# Create console handler (still show in Docker logs too)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+
+# Create formatter
+formatter = logging.Formatter(
+    '%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+# Configure root logger
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+root_logger.addHandler(file_handler)
+root_logger.addHandler(console_handler)
+
 log = logging.getLogger(__name__)
+
+# Intercept print() to also write to log files
+import sys
+class LoggerWriter:
+    def __init__(self, level):
+        self.level = level
+        self.original_stdout = sys.stdout
+        self.original_stderr = sys.stderr
+        
+    def write(self, message):
+        # Write to original stdout/stderr (for Docker logs)
+        if self.level == 'stdout':
+            self.original_stdout.write(message)
+        else:
+            self.original_stderr.write(message)
+        
+        # Also write to log file
+        if message.strip():  # Avoid logging empty lines
+            if self.level == 'stdout':
+                root_logger.info(message.strip())
+            else:
+                root_logger.error(message.strip())
+    
+    def flush(self):
+        if self.level == 'stdout':
+            self.original_stdout.flush()
+        else:
+            self.original_stderr.flush()
+
+# Redirect stdout/stderr to logger (while keeping original output)
+sys.stdout = LoggerWriter('stdout')
+sys.stderr = LoggerWriter('stderr')
 
 # ============================================================
 # CUSTOM SLEEP SCORE CALCULATION

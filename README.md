@@ -209,8 +209,13 @@ services:
 ```
 
 > **📦 Volume Mounts**: The `volumes` section ensures your cached Fitbit data (SQLite database at `./data/data_cache.db`) and logs persist across container rebuilds and restarts. 
+>
+> **📝 Logging**: Application logs are written to `/app/logs/fitbit-app.log` with automatic rotation:
+> - **File logs**: 50MB × 3 files = 150MB max (in your `./logs` directory)
+> - **Docker logs**: Also capped at 50MB × 3 files = 150MB max
+> - Logs survive container rebuilds and are appended to existing files
 > 
-> **🏥 Healthcheck**: The healthcheck monitors the main dashboard on port 5033 every 30 seconds to ensure the app is responsive.
+> **🏥 Healthcheck**: The healthcheck monitors the main dashboard on port 5033 every 60 seconds to ensure the app is responsive.
 
 ## Legacy Self-Hosting (Manual Token Entry)
 
