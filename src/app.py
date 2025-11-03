@@ -595,12 +595,12 @@ def background_cache_builder(access_token: str, refresh_token: str = None):
             print("📍 PHASE 1: Range-Based Endpoints (Single call for entire history)")
             print("-" * 60)
             
-            # Determine date range: last 730 days (2 years of historical data)
+            # Determine date range: last 365 days
             end_date = datetime.now()
-            start_date = end_date - timedelta(days=730)
+            start_date = end_date - timedelta(days=365)
             start_date_str = start_date.strftime('%Y-%m-%d')
             end_date_str = end_date.strftime('%Y-%m-%d')
-            print(f"📅 Fetching range: {start_date_str} to {end_date_str} (730 days)")
+            print(f"📅 Fetching range: {start_date_str} to {end_date_str} (365 days)")
             
             # Generate master date list for caching alignment
             dates_str_list = []
