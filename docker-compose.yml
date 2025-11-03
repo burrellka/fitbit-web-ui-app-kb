@@ -7,6 +7,11 @@ services:
       - "5032:5032"  # OAuth callback port
       - "5033:5033"  # Main dashboard port
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"     # Max size per log file
+        max-file: "3"       # Keep 3 rotated files (150MB total)
     environment:
       - CLIENT_ID=${CLIENT_ID}
       - CLIENT_SECRET=${CLIENT_SECRET}

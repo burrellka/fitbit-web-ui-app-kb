@@ -184,6 +184,11 @@ services:
       - "5032:5032"  # OAuth callback
       - "5033:5033"  # Main dashboard
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     environment:
       - CLIENT_ID=${CLIENT_ID}
       - CLIENT_SECRET=${CLIENT_SECRET}
