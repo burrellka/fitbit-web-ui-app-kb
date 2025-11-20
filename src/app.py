@@ -1400,7 +1400,195 @@ def populate_sleep_score_cache(dates_to_fetch: list, headers: dict, force_refres
             print(f"⚠️ Error fetching sleep score for {date_str}: {e}")
             continue
     
+
     return fetched_count
+
+def fetch_todays_stats(date_str, access_token):
+    """
+    Fetches real-time stats for a specific date (usually today) and updates the cache.
+    Returns a dictionary of fetched data or None if failed.
+    """
+    print(f"🔄 Fetching TODAY's real-time stats ({date_str})...")
+    headers = {"Authorization": f"Bearer {access_token}"}
+    
+    # We need to fetch multiple endpoints to get a complete picture
+    # 1. Heart Rate (1d)
+    # 2. Steps, Calories, Distance, Floors, AZM (1d)
+    # 3. Weight (1d)
+    # 4. SpO2, HRV, Breathing Rate, Temp (may not be available for today yet, but we try)
+    # 5. Sleep (today's sleep)
+    
+    fetched_data = {}
+    
+    try:
+        # 1. Heart Rate
+        url = f"https://api.fitbit.com/1/user/-/activities/heart/date/{date_str}/1d.json"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            # Process and cache HR
+            if 'activities-heart' in data and data['activities-heart']:
+                entry = data['activities-heart'][0]
+                rhr = entry['value'].get('restingHeartRate')
+                zones = entry['value'].get('heartRateZones', [])
+                fat_burn = next((z['minutes'] for z in zones if z['name'] == 'Fat Burn'), 0)
+                cardio = next((z['minutes'] for z in zones if z['name'] == 'Cardio'), 0)
+                peak = next((z['minutes'] for z in zones if z['name'] == 'Peak'), 0)
+                
+                cache.set_daily_metrics(
+                    date=date_str,
+                    resting_heart_rate=rhr,
+                    fat_burn_minutes=fat_burn,
+                    cardio_minutes=cardio,
+                    peak_minutes=peak
+                )
+                fetched_data['heart_rate'] = True
+                print("   ✅ Fetched heart_rate")
+
+        # 2. Activity Metrics (Steps, Calories, Distance, Floors, AZM)
+        metrics = {
+            'steps': 'activities/steps',
+            'calories': 'activities/calories',
+            'distance': 'activities/distance',
+            'floors': 'activities/floors',
+            'active_zone_minutes': 'activities/active-zone-minutes'
+        }
+        
+        for metric_name, endpoint in metrics.items():
+            url = f"https://api.fitbit.com/1/user/-/{endpoint}/date/{date_str}/1d.json"
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                key = f"activities-{metric_name.replace('_', '-')}"
+                if key in data and data[key]:
+                    val = data[key][0]['value']
+                    
+                    # Handle specific formats
+                    if metric_name == 'active_zone_minutes':
+                        val = val.get('activeZoneMinutes', 0)
+                    elif metric_name == 'distance':
+                        # Convert km to miles
+                        val = float(val) * 0.621371
+                    else:
+                        val = float(val)
+                        
+                    # Update cache
+                    kwargs = {metric_name: val}
+                    cache.set_daily_metrics(date=date_str, **kwargs)
+                    fetched_data[metric_name] = True
+                    print(f"   ✅ Fetched {metric_name}")
+
+        # 3. Weight
+        url = f"https://api.fitbit.com/1/user/-/body/log/weight/date/{date_str}/1d.json"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if 'weight' in data and data['weight']:
+                entry = data['weight'][0]
+                weight_kg = entry.get('weight')
+                fat = entry.get('fat')
+                if weight_kg:
+                    weight_lbs = weight_kg * 2.20462
+                    cache.set_daily_metrics(date=date_str, weight=weight_lbs, body_fat=fat)
+                    fetched_data['weight'] = True
+                    print("   ✅ Fetched weight")
+
+        # 4. Advanced Metrics (SpO2, HRV, etc - often only available after sleep sync)
+        # SpO2
+        url = f"https://api.fitbit.com/1/user/-/spo2/date/{date_str}.json"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if 'value' in data:
+                avg = data['value'].get('avg')
+                eov = data['value'].get('eov') or data['value'].get('variationScore')
+                if avg:
+                    cache.set_daily_metrics(date=date_str, spo2=avg, eov=eov)
+                    fetched_data['spo2'] = True
+                    print("   ✅ Fetched spo2")
+
+        # HRV
+        url = f"https://api.fitbit.com/1/user/-/hrv/date/{date_str}.json"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if 'hrv' in data and data['hrv']:
+                val = data['hrv'][0]['value']['dailyRmssd']
+                cache.set_advanced_metrics(date=date_str, hrv=val)
+                fetched_data['hrv'] = True
+                print("   ✅ Fetched hrv")
+        
+        # Breathing Rate
+        url = f"https://api.fitbit.com/1/user/-/br/date/{date_str}.json"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if 'br' in data and data['br']:
+                val = data['br'][0]['value']['breathingRate']
+                cache.set_advanced_metrics(date=date_str, breathing_rate=val)
+                fetched_data['breathing_rate'] = True
+                print("   ✅ Fetched breathing_rate")
+                
+        # Temperature
+        url = f"https://api.fitbit.com/1/user/-/temp/skin/date/{date_str}.json"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if 'tempSkin' in data and data['tempSkin']:
+                val = data['tempSkin'][0]['value']
+                if isinstance(val, dict):
+                    val = val.get('nightlyRelative')
+                cache.set_advanced_metrics(date=date_str, temperature=val)
+                fetched_data['temperature'] = True
+                print("   ✅ Fetched temperature")
+                
+        # Cardio Fitness (VO2 Max)
+        url = f"https://api.fitbit.com/1/user/-/cardioscore/date/{date_str}.json"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if 'cardioScore' in data and data['cardioScore']:
+                val = data['cardioScore'][0]['value']['vo2Max']
+                # Handle ranges
+                if isinstance(val, str) and '-' in val:
+                    parts = val.split('-')
+                    val = (float(parts[0]) + float(parts[1])) / 2
+                cache.set_cardio_fitness(date=date_str, vo2_max=float(val))
+                fetched_data['cardio_fitness'] = True
+                print("   ✅ Fetched cardio_fitness")
+
+        # 5. Sleep
+        # Note: Sleep is handled by populate_sleep_score_cache, but we can call it here for completeness
+        # or let the main loop handle it. For now, let's just ensure we have the data.
+        
+        # 6. Activities List
+        url = f"https://api.fitbit.com/1/user/-/activities/date/{date_str}.json"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if 'activities' in data:
+                for act in data['activities']:
+                    activity_id = str(act.get('logId'))
+                    cache.set_activity(
+                        activity_id=activity_id,
+                        date=date_str,
+                        activity_name=act.get('activityName'),
+                        duration_ms=act.get('duration'),
+                        calories=act.get('calories'),
+                        avg_heart_rate=act.get('averageHeartRate'),
+                        steps=act.get('steps'),
+                        distance=act.get('distance'),
+                        activity_data_json=json.dumps(act)
+                    )
+                fetched_data['activities'] = True
+                print(f"   ✅ Fetched {len(data['activities'])} activities")
+
+        return fetched_data
+
+    except Exception as e:
+        print(f"⚠️ Error fetching today's stats: {e}")
+        return None
+
 
 for variable in ['CLIENT_ID','CLIENT_SECRET','REDIRECT_URL'] :
     if variable not in os.environ.keys() :
@@ -3301,128 +3489,121 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             all_cached = False
             missing_dates.append(date_str)
     
+
     # 🚨 CRITICAL: Always refresh TODAY's data if it's in the range
     today = datetime.now().strftime('%Y-%m-%d')
-    refresh_today = today in dates_str_list
+    if today in dates_str_list:
+        print(f"🔄 TODAY ({today}) in range - fetching real-time stats...")
+        # Fetch and cache today's data
+        todays_data = fetch_todays_stats(today, oauth_token)
+        if todays_data:
+            print(f"✅ Today's stats fetched and cached: {list(todays_data.keys())}")
+        else:
+            print(f"⚠️ Failed to fetch today's stats")
+            
+    # 🚀 UNIFIED DATA LOADING: Always load from cache!
+    # We just refreshed today's data, so now the cache is as up-to-date as possible.
+    # This avoids the split logic where "not all_cached" leads to broken API processing.
     
-    if all_cached and not refresh_today:
-        print(f"✅ 100% CACHED! Serving report from cache (0 API calls)")
-        # Skip ALL API calls - serve directly from cache
-        # Populate ALL data from cache
-        user_profile = {"user": {"displayName": "Cached User", "firstName": "Cached", "lastName": "User"}}
+    print(f"✅ Loading all {len(dates_str_list)} days from cache...")
+    
+    # Populate ALL data from cache
+    user_profile = {"user": {"displayName": "Cached User", "firstName": "Cached", "lastName": "User"}}
+    
+    # Read all daily metrics from cache
+    # (Lists already initialized at function level)
+    print(f"📖 Reading {len(dates_str_list)} days from cache...")
+    for date_str in dates_str_list:
+        daily_metrics = cache.get_daily_metrics(date_str)
         
-        # Read all daily metrics from cache
-        # (Lists already initialized at function level)
-        print(f"📖 Reading {len(dates_str_list)} days from cache...")
-        for date_str in dates_str_list:
-            daily_metrics = cache.get_daily_metrics(date_str)
+        if daily_metrics:
+            # Heart rate data
+            rhr_list.append(daily_metrics.get('resting_heart_rate'))
+            fat_burn_minutes_list.append(daily_metrics.get('fat_burn_minutes'))
+            cardio_minutes_list.append(daily_metrics.get('cardio_minutes'))
+            peak_minutes_list.append(daily_metrics.get('peak_minutes'))
             
-            if daily_metrics:
-                # 🐞 DEBUG: Show what we're reading from cache
-                print(f"   📅 {date_str}: RHR={daily_metrics.get('resting_heart_rate')}, Steps={daily_metrics.get('steps')}, Calories={daily_metrics.get('calories')}")
-                
-                # Heart rate data
-                rhr_list.append(daily_metrics.get('resting_heart_rate'))
-                fat_burn_minutes_list.append(daily_metrics.get('fat_burn_minutes'))
-                cardio_minutes_list.append(daily_metrics.get('cardio_minutes'))
-                peak_minutes_list.append(daily_metrics.get('peak_minutes'))
-                
-                # Steps, weight, SpO2
-                steps_list.append(daily_metrics.get('steps'))
-                weight_list.append(daily_metrics.get('weight'))
-                body_fat_list.append(daily_metrics.get('body_fat'))
-                spo2_list.append(daily_metrics.get('spo2'))
-                
-                # Calories, distance, floors, AZM
-                calories_list.append(daily_metrics.get('calories'))
-                distance_list.append(daily_metrics.get('distance'))
-                floors_list.append(daily_metrics.get('floors'))
-                azm_list.append(daily_metrics.get('active_zone_minutes'))
-            else:
-                # Append None if no cache data
-                rhr_list.append(None)
-                fat_burn_minutes_list.append(None)
-                cardio_minutes_list.append(None)
-                peak_minutes_list.append(None)
-                steps_list.append(None)
-                weight_list.append(None)
-                body_fat_list.append(None)
-                spo2_list.append(None)
-                calories_list.append(None)
-                distance_list.append(None)
-                floors_list.append(None)
-                azm_list.append(None)
+            # Steps, weight, SpO2
+            steps_list.append(daily_metrics.get('steps'))
+            weight_list.append(daily_metrics.get('weight'))
+            body_fat_list.append(daily_metrics.get('body_fat'))
+            spo2_list.append(daily_metrics.get('spo2'))
             
-            # Advanced metrics (🐞 FIX #3: Added EOV to cache reading)
-            advanced_metrics = cache.get_advanced_metrics(date_str)
-            if advanced_metrics:
-                hrv_list.append(advanced_metrics.get('hrv'))
-                breathing_list.append(advanced_metrics.get('breathing_rate'))
-                temperature_list.append(advanced_metrics.get('temperature'))
-            else:
-                hrv_list.append(None)
-                breathing_list.append(None)
-                temperature_list.append(None)
-            
-            # EOV from daily metrics (SpO2 related)
-            if daily_metrics:
-                eov_list.append(daily_metrics.get('eov'))
-            else:
-                eov_list.append(None)
-            
-            # Cardio fitness
-            cardio_data = cache.get_cardio_fitness(date_str)
-            cardio_fitness_list.append(cardio_data)
-            
-            # Dates (already in dates_str_list, just append to dates_list)
-            dates_list.append(datetime.strptime(date_str, '%Y-%m-%d'))
+            # Calories, distance, floors, AZM
+            calories_list.append(daily_metrics.get('calories'))
+            distance_list.append(daily_metrics.get('distance'))
+            floors_list.append(daily_metrics.get('floors'))
+            azm_list.append(daily_metrics.get('active_zone_minutes'))
+        else:
+            # Append None if no cache data
+            rhr_list.append(None)
+            fat_burn_minutes_list.append(None)
+            cardio_minutes_list.append(None)
+            peak_minutes_list.append(None)
+            steps_list.append(None)
+            weight_list.append(None)
+            body_fat_list.append(None)
+            spo2_list.append(None)
+            calories_list.append(None)
+            distance_list.append(None)
+            floors_list.append(None)
+            azm_list.append(None)
         
-        # Create dummy response structures (won't be used in processing)
-        response_heartrate = {"activities-heart": []}
-        response_steps = {"activities-steps": []}
-        response_weight = {"weight": []}
-        response_spo2 = []
-        response_calories = {"activities-calories": []}
-        response_distance = {"activities-distance": []}
-        response_floors = {"activities-floors": []}
-        response_azm = {"activities-active-zone-minutes": []}
-        response_hrv = {"hrv": []}
-        response_breathing = {"br": []}
-        response_temperature = {"tempSkin": []}
-        response_cardio_fitness = {"cardioScore": []}
+        # Advanced metrics (🐞 FIX #3: Added EOV to cache reading)
+        advanced_metrics = cache.get_advanced_metrics(date_str)
+        if advanced_metrics:
+            hrv_list.append(advanced_metrics.get('hrv'))
+            breathing_list.append(advanced_metrics.get('breathing_rate'))
+            temperature_list.append(advanced_metrics.get('temperature'))
+        else:
+            hrv_list.append(None)
+            breathing_list.append(None)
+            temperature_list.append(None)
         
-        # 🐞 FIX: Load activities from cache (CRITICAL - was missing!)
-        print("📥 Loading activities from cache...")
-        response_activities = {"activities": []}
-        total_activities = 0
+        # EOV from daily metrics (SpO2 related)
+        if daily_metrics:
+            eov_list.append(daily_metrics.get('eov'))
+        else:
+            eov_list.append(None)
         
-        for date_str in dates_str_list:
-            activities_for_date = cache.get_activities(date_str)
-            for act in activities_for_date:
-                # Try to parse the full activity JSON if available
-                try:
-                    activity_json = act.get('activity_data_json')
-                    if activity_json:
-                        full_activity = json.loads(activity_json)
-                        # Use the full activity data from cache
-                        response_activities['activities'].append(full_activity)
-                    else:
-                        # Fallback: Reconstruct from basic fields
-                        activity_dict = {
-                            'logId': act.get('activity_id'),
-                            'activityName': act.get('activity_name'),
-                            'startTime': f"{date_str}T00:00:00.000",
-                            'duration': act.get('duration_ms'),
-                            'calories': act.get('calories'),
-                            'averageHeartRate': act.get('avg_heart_rate'),
-                            'steps': act.get('steps'),
-                            'distance': act.get('distance')
-                        }
-                        response_activities['activities'].append(activity_dict)
-                    total_activities += 1
-                except (json.JSONDecodeError, TypeError) as e:
-                    print(f"⚠️ Warning: Could not parse activity JSON for {date_str}: {e}")
-                    # Fallback to basic reconstruction
+        # Cardio fitness
+        cardio_data = cache.get_cardio_fitness(date_str)
+        cardio_fitness_list.append(cardio_data)
+        
+        # Dates (already in dates_str_list, just append to dates_list)
+        dates_list.append(datetime.strptime(date_str, '%Y-%m-%d'))
+    
+    # Create dummy response structures (won't be used in processing)
+    response_heartrate = {"activities-heart": []}
+    response_steps = {"activities-steps": []}
+    response_weight = {"weight": []}
+    response_spo2 = []
+    response_calories = {"activities-calories": []}
+    response_distance = {"activities-distance": []}
+    response_floors = {"activities-floors": []}
+    response_azm = {"activities-active-zone-minutes": []}
+    response_hrv = {"hrv": []}
+    response_breathing = {"br": []}
+    response_temperature = {"tempSkin": []}
+    response_cardio_fitness = {"cardioScore": []}
+    
+    # 🐞 FIX: Load activities from cache (CRITICAL - was missing!)
+    print("📥 Loading activities from cache...")
+    response_activities = {"activities": []}
+    total_activities = 0
+    
+    for date_str in dates_str_list:
+        activities_for_date = cache.get_activities(date_str)
+        for act in activities_for_date:
+            # Try to parse the full activity JSON if available
+            try:
+                activity_json = act.get('activity_data_json')
+                if activity_json:
+                    full_activity = json.loads(activity_json)
+                    # Use the full activity data from cache
+                    response_activities['activities'].append(full_activity)
+                else:
+                    # Fallback: Reconstruct from basic fields
                     activity_dict = {
                         'logId': act.get('activity_id'),
                         'activityName': act.get('activity_name'),
@@ -3434,32 +3615,28 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                         'distance': act.get('distance')
                     }
                     response_activities['activities'].append(activity_dict)
-                    total_activities += 1
-        
-        print(f"✅ Loaded {total_activities} activities from cache")
-    elif all_cached and refresh_today:
-        print(f"🔄 Cache complete BUT refreshing TODAY ({today}) for real-time data...")
-        # Refresh today's data, but serve the rest from cache
-        missing_dates = [today]
-        all_cached = False  # Force API calls for today only
+                total_activities += 1
+            except (json.JSONDecodeError, TypeError) as e:
+                print(f"⚠️ Warning: Could not parse activity JSON for {date_str}: {e}")
+                # Fallback to basic reconstruction
+                activity_dict = {
+                    'logId': act.get('activity_id'),
+                    'activityName': act.get('activity_name'),
+                    'startTime': f"{date_str}T00:00:00.000",
+                    'duration': act.get('duration_ms'),
+                    'calories': act.get('calories'),
+                    'averageHeartRate': act.get('avg_heart_rate'),
+                    'steps': act.get('steps'),
+                    'distance': act.get('distance')
+                }
+                response_activities['activities'].append(activity_dict)
+                total_activities += 1
     
-    if not all_cached:
-        # 🚨 CRITICAL FIX #4: STOP ALL FOREGROUND API CALLS
-        # Report generation should ONLY read from cache. If data is missing, show "Data Missing - Cache Builder Running"
-        # This prevents rate limit errors and ensures predictable behavior.
-        print(f"⚠️ Cache incomplete - {len(missing_dates)} days missing.")
-        print(f"Missing dates: {missing_dates[:5]}{'...' if len(missing_dates) > 5 else ''}")
-        print(f"📊 Serving report from partial cache. Missing data will show as 'No Data Available'.")
-        print(f"💡 The background cache builder will fill in missing data automatically.")
-        
-        # Set user profile to cached/default
-        user_profile = {"user": {"displayName": "Cached User", "firstName": "Cached", "lastName": "User"}}
-        
-        # Create empty response structures (won't make API calls)
-        response_heartrate = {"activities-heart": []}
-        response_steps = {"activities-steps": []}
-        response_weight = {"weight": []}
-        response_spo2 = []
+    print(f"✅ Loaded {total_activities} activities from cache")
+    
+    # Force all_cached = True to skip the legacy API processing block
+    all_cached = True
+
     
     # 🚨 CRITICAL FIX #4: Always use dates_str_list (the requested date range)
     # Don't rely on API responses since we're not making foreground API calls anymore
