@@ -139,6 +139,15 @@ class FitbitCache:
                 )
             ''')
             
+            # Intraday Activity Data table (High resolution heart rate)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS activity_intraday_cache (
+                    activity_id TEXT PRIMARY KEY,
+                    intraday_json TEXT,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
             conn.commit()
             conn.close()
             print("✅ Cache database initialized")
@@ -676,6 +685,34 @@ class FitbitCache:
             conn.commit()
             conn.close()
     
+    def get_activity_intraday(self, activity_id: str) -> Optional[Dict]:
+        """Get cached intraday data for a specific activity"""
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('SELECT intraday_json FROM activity_intraday_cache WHERE activity_id = ?', (activity_id,))
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result and result[0]:
+                try:
+                    return json.loads(result[0])
+                except:
+                    return None
+            return None
+
+    def set_activity_intraday(self, activity_id: str, intraday_data: Dict):
+        """Cache intraday data for a specific activity"""
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO activity_intraday_cache (activity_id, intraday_json, last_updated)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+            ''', (activity_id, json.dumps(intraday_data)))
+            conn.commit()
+            conn.close()
+    
     def flush_cache(self):
         """Clear all cached data (sleep, advanced metrics, daily metrics, activities, but NOT tokens)"""
         with self.lock:
@@ -686,7 +723,9 @@ class FitbitCache:
             cursor.execute('DELETE FROM advanced_metrics_cache')
             cursor.execute('DELETE FROM daily_metrics_cache')
             cursor.execute('DELETE FROM cardio_fitness_cache')
+            cursor.execute('DELETE FROM cardio_fitness_cache')
             cursor.execute('DELETE FROM activities_cache')
+            cursor.execute('DELETE FROM activity_intraday_cache')
             
             conn.commit()
             conn.close()
@@ -702,7 +741,9 @@ class FitbitCache:
             cursor.execute('DELETE FROM advanced_metrics_cache')
             cursor.execute('DELETE FROM daily_metrics_cache')
             cursor.execute('DELETE FROM cardio_fitness_cache')
+            cursor.execute('DELETE FROM cardio_fitness_cache')
             cursor.execute('DELETE FROM activities_cache')
+            cursor.execute('DELETE FROM activity_intraday_cache')
             cursor.execute('DELETE FROM cache_metadata')
             
             conn.commit()

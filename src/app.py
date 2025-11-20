@@ -2617,17 +2617,28 @@ def display_workout_details(selected_date, oauth_token, refresh_token, token_exp
             start_dt = datetime.fromisoformat(start_time.replace('Z', ''))
             date_str = start_dt.strftime('%Y-%m-%d')
             
-            # Fetch intraday heart rate data (🐞 FIX #3: Use 1min instead of 1sec to conserve API budget)
-            headers = {'Authorization': f'Bearer {oauth_token}'}
-            url = f"https://api.fitbit.com/1/user/-/activities/heart/date/{date_str}/1d/1min.json"
-            response = requests.get(url, headers=headers)
-            
-            if response.status_code != 200:
-                print(f"⚠️ Failed to fetch intraday HR for activity {log_id}: {response.status_code}")
-                return None
-            
-            data = response.json()
-            intraday_data = data.get('activities-heart-intraday', {}).get('dataset', [])
+            # Check cache first
+            cached_intraday = cache.get_activity_intraday(str(log_id))
+            if cached_intraday:
+                print(f"📊 Using CACHED intraday data for activity {log_id}")
+                intraday_data = cached_intraday
+            else:
+                # Fetch intraday heart rate data (🐞 FIX #3: Use 1min instead of 1sec to conserve API budget)
+                headers = {'Authorization': f'Bearer {oauth_token}'}
+                url = f"https://api.fitbit.com/1/user/-/activities/heart/date/{date_str}/1d/1min.json"
+                response = requests.get(url, headers=headers)
+                
+                if response.status_code != 200:
+                    print(f"⚠️ Failed to fetch intraday HR for activity {log_id}: {response.status_code}")
+                    return None
+                
+                data = response.json()
+                intraday_data = data.get('activities-heart-intraday', {}).get('dataset', [])
+                
+                if intraday_data:
+                    # Cache the data
+                    cache.set_activity_intraday(str(log_id), intraday_data)
+                    print(f"💾 Cached intraday data for activity {log_id} ({len(intraday_data)} points)")
             
             if not intraday_data:
                 return None
@@ -4057,134 +4068,6 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     fig_sleep_minutes.update_layout(yaxis_title='Sleep Minutes', legend=dict(orientation="h",yanchor="bottom", y=1.02, xanchor="right", x=1, title_text=''), yaxis=dict(tickvals=[1,120,240,360,480,600,720], ticktext=[f"{m // 60}h" for m in [1,120,240,360,480,600,720]], title="Sleep Time (hours)"))
     # Fix tooltip to show "Xh Ym" format instead of large numbers
     fig_sleep_minutes.update_traces(hovertemplate='<b>%{x}</b><br>%{fullData.name}: %{customdata}<extra></extra>')
-    for trace in fig_sleep_minutes.data:
-        stage_column = trace.name
-        formatted_values = df_merged[stage_column].apply(lambda x: format_minutes(int(x)) if pd.notna(x) else "N/A")
-        trace.customdata = formatted_values
-    if df_merged["Total Sleep Minutes"].dtype != object and df_merged["Total Sleep Minutes"].notna().any():
-        fig_sleep_minutes.add_annotation(x=df_merged.iloc[df_merged["Total Sleep Minutes"].idxmax()]["Date"], y=df_merged["Total Sleep Minutes"].max(), text=str(format_minutes(df_merged["Total Sleep Minutes"].max())), showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
-        fig_sleep_minutes.add_annotation(x=df_merged.iloc[df_merged["Total Sleep Minutes"].idxmin()]["Date"], y=df_merged["Total Sleep Minutes"].min(), text=str(format_minutes(df_merged["Total Sleep Minutes"].min())), showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"), )
-        fig_sleep_minutes.add_hline(y=df_merged["Total Sleep Minutes"].mean(), line_dash="dot",annotation_text="Average : " + str(format_minutes(safe_avg(df_merged["Total Sleep Minutes"].mean()))), annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
-    # Set range slider - handle short date ranges
-    if len(dates_str_list) > 0:
-        range_start = dates_str_list[max(-30, -len(dates_str_list))]
-        fig_sleep_minutes.update_xaxes(rangeslider_visible=True,range=[range_start, dates_str_list[-1]],rangeslider_range=[dates_str_list[0], dates_str_list[-1]])
-    sleep_summary_df = calculate_table_data(df_merged, "Total Sleep Minutes")
-    sleep_summary_table = dash_table.DataTable(sleep_summary_df.to_dict('records'), [{"name": i, "id": i} for i in sleep_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#636efa','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
-    fig_sleep_regularity = px.bar(df_merged, x="Date", y="Total Sleep Seconds", base="Sleep Start Time Seconds", title="<b>Sleep Regularity<br><br><sup>The chart time here is always in local time ( Independent of timezone changes )</sup></b>", labels={"Total Sleep Seconds":"Time of Day ( HH:MM )"})
-    fig_sleep_regularity.update_layout(yaxis = dict(tickmode = 'array',tickvals = list(range(0, 120000, 10000)),ticktext = list(map(seconds_to_tick_label, list(range(0, 120000, 10000))))))
-    # Fix tooltip to show time in HH:MM format instead of numbers
-    sleep_start_formatted = df_merged["Sleep Start Time Seconds"].apply(lambda x: seconds_to_tick_label(int(x)) if pd.notna(x) else "N/A")
-    sleep_end_formatted = df_merged["Sleep End Time Seconds"].apply(lambda x: seconds_to_tick_label(int(x)) if pd.notna(x) else "N/A")
-    sleep_duration_formatted = df_merged["Total Sleep Minutes"].apply(lambda x: format_minutes(int(x)) if pd.notna(x) else "N/A")
-    fig_sleep_regularity.update_traces(
-        hovertemplate='<b>%{x}</b><br>Sleep Start: %{customdata[0]}<br>Sleep End: %{customdata[1]}<br>Duration: %{customdata[2]}<extra></extra>', 
-        customdata=list(zip(sleep_start_formatted, sleep_end_formatted, sleep_duration_formatted))
-    )
-    if df_merged["Sleep Start Time Seconds"].notna().any():
-        fig_sleep_regularity.add_hline(y=df_merged["Sleep Start Time Seconds"].mean(), line_dash="dot",annotation_text="Sleep Start Time Trend : "+ str(seconds_to_tick_label(safe_avg(df_merged["Sleep Start Time Seconds"].mean(), as_int=True))), annotation_position="bottom right", annotation_bgcolor="#0a3024", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
-        fig_sleep_regularity.add_hline(y=df_merged["Sleep End Time Seconds"].mean(), line_dash="dot",annotation_text="Sleep End Time Trend : " + str(seconds_to_tick_label(safe_avg(df_merged["Sleep End Time Seconds"].mean(), as_int=True))), annotation_position="top left", annotation_bgcolor="#5e060d", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
-    
-    # New visualizations
-    # HRV
-    hrv_avg = {'overall': safe_avg(df_merged["HRV"].mean(),1), '30d': safe_avg(df_merged["HRV"].tail(30).mean(),1)}
-    fig_hrv = px.line(df_merged, x="Date", y="HRV", line_shape="spline", color_discrete_sequence=["#ff6692"], title=f"<b>Heart Rate Variability (HRV)<br><br><sup>Overall average : {hrv_avg['overall']} ms | Last 30d average : {hrv_avg['30d']} ms</sup></b><br><br><br>", labels={"HRV": "HRV (ms)"})
-    if df_merged["HRV"].dtype != object and df_merged["HRV"].notna().any():
-        fig_hrv.add_annotation(x=df_merged.iloc[df_merged["HRV"].idxmax()]["Date"], y=df_merged["HRV"].max(), text=str(df_merged["HRV"].max()), showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
-        fig_hrv.add_annotation(x=df_merged.iloc[df_merged["HRV"].idxmin()]["Date"], y=df_merged["HRV"].min(), text=str(df_merged["HRV"].min()), showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
-        fig_hrv.add_hline(y=df_merged["HRV"].mean(), line_dash="dot",annotation_text="Average : " + str(safe_avg(df_merged["HRV"].mean(), 1)) + " ms", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
-    hrv_summary_df = calculate_table_data(df_merged, "HRV")
-    hrv_summary_table = dash_table.DataTable(hrv_summary_df.to_dict('records'), [{"name": i, "id": i} for i in hrv_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#a8326b','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
-    
-    # Breathing Rate
-    breathing_avg = {'overall': safe_avg(df_merged["Breathing Rate"].mean(),1), '30d': safe_avg(df_merged["Breathing Rate"].tail(30).mean(),1)}
-    fig_breathing = px.line(df_merged, x="Date", y="Breathing Rate", line_shape="spline", color_discrete_sequence=["#00d4ff"], title=f"<b>Breathing Rate<br><br><sup>Overall average : {breathing_avg['overall']} bpm | Last 30d average : {breathing_avg['30d']} bpm</sup></b><br><br><br>", labels={"Breathing Rate": "Breaths per Minute"})
-    if df_merged["Breathing Rate"].dtype != object and df_merged["Breathing Rate"].notna().any():
-        fig_breathing.add_annotation(x=df_merged.iloc[df_merged["Breathing Rate"].idxmax()]["Date"], y=df_merged["Breathing Rate"].max(), text=str(df_merged["Breathing Rate"].max()), showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
-        fig_breathing.add_annotation(x=df_merged.iloc[df_merged["Breathing Rate"].idxmin()]["Date"], y=df_merged["Breathing Rate"].min(), text=str(df_merged["Breathing Rate"].min()), showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
-        fig_breathing.add_hline(y=df_merged["Breathing Rate"].mean(), line_dash="dot",annotation_text="Average : " + str(safe_avg(df_merged["Breathing Rate"].mean(), 1)) + " bpm", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
-    breathing_summary_df = calculate_table_data(df_merged, "Breathing Rate")
-    breathing_summary_table = dash_table.DataTable(breathing_summary_df.to_dict('records'), [{"name": i, "id": i} for i in breathing_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#007a8c','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
-    
-    # Cardio Fitness Score with error handling
-    try:
-        # Convert to numeric, coercing errors to NaN
-        df_merged["Cardio Fitness Score"] = pd.to_numeric(df_merged["Cardio Fitness Score"], errors='coerce')
-        cardio_fitness_avg = {'overall': safe_avg(df_merged["Cardio Fitness Score"].mean(),1), '30d': safe_avg(df_merged["Cardio Fitness Score"].tail(30).mean(),1)}
-        fig_cardio_fitness = px.line(df_merged, x="Date", y="Cardio Fitness Score", line_shape="spline", color_discrete_sequence=["#ff9500"], title=f"<b>Cardio Fitness Score (VO2 Max)<br><br><sup>Overall average : {cardio_fitness_avg['overall']} | Last 30d average : {cardio_fitness_avg['30d']}</sup></b><br><br><br>")
-        if df_merged["Cardio Fitness Score"].notna().any():
-            fig_cardio_fitness.add_annotation(x=df_merged.iloc[df_merged["Cardio Fitness Score"].idxmax()]["Date"], y=df_merged["Cardio Fitness Score"].max(), text=str(round(df_merged["Cardio Fitness Score"].max(), 1)), showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
-            fig_cardio_fitness.add_annotation(x=df_merged.iloc[df_merged["Cardio Fitness Score"].idxmin()]["Date"], y=df_merged["Cardio Fitness Score"].min(), text=str(round(df_merged["Cardio Fitness Score"].min(), 1)), showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
-            fig_cardio_fitness.add_hline(y=df_merged["Cardio Fitness Score"].mean(), line_dash="dot",annotation_text="Average : " + str(round(df_merged["Cardio Fitness Score"].mean(), 1)), annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
-        cardio_fitness_summary_df = calculate_table_data(df_merged, "Cardio Fitness Score")
-        cardio_fitness_summary_table = dash_table.DataTable(cardio_fitness_summary_df.to_dict('records'), [{"name": i, "id": i} for i in cardio_fitness_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#995500','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
-    except Exception as e:
-        print(f"Error processing Cardio Fitness Score: {e}")
-        fig_cardio_fitness = px.line(title="Cardio Fitness Score (No Data)")
-        cardio_fitness_summary_table = html.P("No cardio fitness data available", style={'text-align': 'center', 'color': '#888'})
-    
-    # Temperature
-    temperature_avg = {'overall': safe_avg(df_merged["Temperature"].mean(),2), '30d': safe_avg(df_merged["Temperature"].tail(30).mean(),2)}
-    fig_temperature = px.line(df_merged, x="Date", y="Temperature", line_shape="spline", color_discrete_sequence=["#ff5733"], title=f"<b>Temperature Variation<br><br><sup>Overall average : {temperature_avg['overall']}°F | Last 30d average : {temperature_avg['30d']}°F</sup></b><br><br><br>")
-    if df_merged["Temperature"].dtype != object and df_merged["Temperature"].notna().any():
-        fig_temperature.add_annotation(x=df_merged.iloc[df_merged["Temperature"].idxmax()]["Date"], y=df_merged["Temperature"].max(), text=str(df_merged["Temperature"].max()), showarrow=False, arrowhead=0, bgcolor="#5f040a", opacity=0.80, yshift=15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
-        fig_temperature.add_annotation(x=df_merged.iloc[df_merged["Temperature"].idxmin()]["Date"], y=df_merged["Temperature"].min(), text=str(df_merged["Temperature"].min()), showarrow=False, arrowhead=0, bgcolor="#0b2d51", opacity=0.80, yshift=-15, borderpad=5, font=dict(family="Helvetica, monospace", size=12, color="#ffffff"))
-        fig_temperature.add_hline(y=df_merged["Temperature"].mean(), line_dash="dot",annotation_text="Average : " + str(safe_avg(df_merged["Temperature"].mean(), 2)) + "°F", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.6, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
-    temperature_summary_df = calculate_table_data(df_merged, "Temperature")
-    temperature_summary_table = dash_table.DataTable(temperature_summary_df.to_dict('records'), [{"name": i, "id": i} for i in temperature_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#992211','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
-    
-    # Active Zone Minutes
-    azm_avg = {'overall': safe_avg(df_merged["Active Zone Minutes"].mean(),1), '30d': safe_avg(df_merged["Active Zone Minutes"].tail(30).mean(),1)}
-    fig_azm = px.bar(df_merged, x="Date", y="Active Zone Minutes", color_discrete_sequence=["#ffcc00"], title=f"<b>Active Zone Minutes<br><br><sup>Overall average : {azm_avg['overall']} minutes | Last 30d average : {azm_avg['30d']} minutes</sup></b><br><br><br>")
-    if df_merged["Active Zone Minutes"].dtype != object and df_merged["Active Zone Minutes"].notna().any():
-        fig_azm.add_hline(y=df_merged["Active Zone Minutes"].mean(), line_dash="dot",annotation_text="Average : " + str(safe_avg(df_merged["Active Zone Minutes"].mean(), 1)) + " minutes", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.8, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
-    azm_summary_df = calculate_table_data(df_merged, "Active Zone Minutes")
-    azm_summary_table = dash_table.DataTable(azm_summary_df.to_dict('records'), [{"name": i, "id": i} for i in azm_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#997700','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
-    
-    # Calories and Distance
-    calories_avg = {'overall': safe_avg(df_merged["Calories"].mean(), as_int=True), '30d': safe_avg(df_merged["Calories"].tail(30).mean(), as_int=True)}
-    fig_calories = px.bar(df_merged, x="Date", y="Calories", color_discrete_sequence=["#ff3366"], title=f"<b>Daily Calories Burned<br><br><sup>Overall average : {calories_avg['overall']} cal | Last 30d average : {calories_avg['30d']} cal</sup></b><br><br><br>")
-    if df_merged["Calories"].dtype != object and df_merged["Calories"].notna().any():
-        fig_calories.add_hline(y=df_merged["Calories"].mean(), line_dash="dot",annotation_text="Average : " + str(safe_avg(df_merged["Calories"].mean(), as_int=True)) + " cal", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.8, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
-    
-    distance_avg = {'overall': safe_avg(df_merged["Distance"].mean(),2), '30d': safe_avg(df_merged["Distance"].tail(30).mean(),2)}
-    fig_distance = px.bar(df_merged, x="Date", y="Distance", color_discrete_sequence=["#33ccff"], title=f"<b>Daily Distance<br><br><sup>Overall average : {distance_avg['overall']} miles | Last 30d average : {distance_avg['30d']} miles</sup></b><br><br><br>", labels={"Distance": "Distance (miles)"})
-    if df_merged["Distance"].dtype != object and df_merged["Distance"].notna().any():
-        fig_distance.add_hline(y=df_merged["Distance"].mean(), line_dash="dot",annotation_text="Average : " + str(safe_avg(df_merged["Distance"].mean(), 2)) + " miles", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.8, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
-    
-    calories_summary_df = calculate_table_data(df_merged, "Calories")
-    calories_summary_table = dash_table.DataTable(calories_summary_df.to_dict('records'), [{"name": i, "id": i} for i in calories_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#991133','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
-    
-    # Floors
-    floors_avg = {'overall': safe_avg(df_merged["Floors"].mean(), as_int=True), '30d': safe_avg(df_merged["Floors"].tail(30).mean(), as_int=True)}
-    fig_floors = px.bar(df_merged, x="Date", y="Floors", color_discrete_sequence=["#9966ff"], title=f"<b>Daily Floors Climbed<br><br><sup>Overall average : {floors_avg['overall']} floors | Last 30d average : {floors_avg['30d']} floors</sup></b><br><br><br>")
-    if df_merged["Floors"].dtype != object and df_merged["Floors"].notna().any():
-        fig_floors.add_hline(y=df_merged["Floors"].mean(), line_dash="dot",annotation_text="Average : " + str(safe_avg(df_merged["Floors"].mean(), as_int=True)) + " floors", annotation_position="bottom right", annotation_bgcolor="#6b3908", annotation_opacity=0.8, annotation_borderpad=5, annotation_font=dict(family="Helvetica, monospace", size=14, color="#ffffff"))
-    floors_summary_df = calculate_table_data(df_merged, "Floors")
-    floors_summary_table = dash_table.DataTable(floors_summary_df.to_dict('records'), [{"name": i, "id": i} for i in floors_summary_df.columns], style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}], style_header={'backgroundColor': '#663399','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'}, style_cell={'textAlign': 'center'})
-    
-    # Exercise Log with Enhanced Data - with caching
-    exercise_data = []
-    activity_types = set(['All'])
-    workout_dates_for_dropdown = []  # For drill-down selector
-    activities_by_date = {}  # Store activities by date for drill-down
-    activities_cached = 0
-    
-    # 🐞 FIX: Load activities from cache if in cache-only mode
-    if all_cached and not refresh_today:
-        print("📦 Loading activities from cache...")
-        cached_activities = cache.get_activities_in_range(start_date, end_date)
-        if cached_activities:
-            response_activities = {"activities": cached_activities}
-            print(f"✅ Loaded {len(cached_activities)} activities from cache")
-        else:
-            print("⚠️ No cached activities found for this date range")
-    
-    for activity in response_activities.get('activities', []):
-        try:
-            activity_date = datetime.strptime(activity['startTime'][:10], '%Y-%m-%d').strftime("%Y-%m-%d")
-            if activity_date >= start_date and activity_date <= end_date:
-                activity_name = activity.get('activityName', 'N/A')
                 activity_types.add(activity_name)
                 
                 exercise_data.append({
