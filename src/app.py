@@ -4068,51 +4068,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     fig_sleep_minutes.update_layout(yaxis_title='Sleep Minutes', legend=dict(orientation="h",yanchor="bottom", y=1.02, xanchor="right", x=1, title_text=''), yaxis=dict(tickvals=[1,120,240,360,480,600,720], ticktext=[f"{m // 60}h" for m in [1,120,240,360,480,600,720]], title="Sleep Time (hours)"))
     # Fix tooltip to show "Xh Ym" format instead of large numbers
     fig_sleep_minutes.update_traces(hovertemplate='<b>%{x}</b><br>%{fullData.name}: %{customdata}<extra></extra>')
-                activity_types.add(activity_name)
-                
-                exercise_data.append({
-                    'Date': activity_date,
-                    'Activity': activity_name,
-                    'Duration (min)': activity.get('duration', 0) // 60000,
-                    'Active Duration (min)': activity.get('activeDuration', 0) // 60000 if activity.get('activeDuration') else 'N/A',
-                    'Calories': activity.get('calories', 0),
-                    'Avg HR': activity.get('averageHeartRate', 'N/A'),
-                    'Steps': activity.get('steps', 'N/A'),
-                    'Distance (mi)': round(activity.get('distance', 0) * 0.621371, 2) if activity.get('distance') else 'N/A'
-                })
-                
-                # Store for drill-down
-                if activity_date not in activities_by_date:
-                    activities_by_date[activity_date] = []
-                    workout_dates_for_dropdown.append({'label': f"{activity_date} - {activity_name}", 'value': activity_date})
-                activities_by_date[activity_date].append(activity)
-                
-                # Store in global dict for callback access
-                if activity_date not in exercise_data_store:
-                    exercise_data_store[activity_date] = []
-                exercise_data_store[activity_date].append(activity)
-                
-                # Cache activity
-                try:
-                    activity_id = str(activity.get('logId', f"{activity_date}_{activity_name}"))
-                    cache.set_activity(
-                        activity_id=activity_id,
-                        date=activity_date,
-                        activity_name=activity_name,
-                        duration_ms=activity.get('duration'),
-                        calories=activity.get('calories'),
-                        avg_heart_rate=activity.get('averageHeartRate'),
-                        steps=activity.get('steps'),
-                        distance=activity.get('distance'),
-                        activity_data_json=json.dumps(activity)
-                    )
-                    activities_cached += 1
-                except:
-                    pass
-        except:
-            pass
-    
-    print(f"✅ Cached {activities_cached} activities")
+
     
     # Exercise type filter options
     exercise_filter_options = [{'label': activity_type, 'value': activity_type} for activity_type in sorted(activity_types)]
