@@ -3461,6 +3461,16 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     breathing_list = []
     temperature_list = []
     cardio_fitness_list = []
+    
+    # Sleep data structures
+    sleep_record_dict = {}
+    sleep_detail_data_store = {}
+    deep_sleep_list = []
+    light_sleep_list = []
+    rem_sleep_list = []
+    awake_list = []
+    total_sleep_list = []
+    sleep_start_times_list = []
     # =================================================================
 
     # 🚀 CACHE-FIRST CHECK: Verify if ALL data is cached before making ANY API calls
@@ -3492,7 +3502,9 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
 
     # 🚨 CRITICAL: Always refresh TODAY's data if it's in the range
     today = datetime.now().strftime('%Y-%m-%d')
-    if today in dates_str_list:
+    refresh_today = today in dates_str_list
+    
+    if refresh_today:
         print(f"🔄 TODAY ({today}) in range - fetching real-time stats...")
         # Fetch and cache today's data
         todays_data = fetch_todays_stats(today, oauth_token)
@@ -3726,326 +3738,12 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     report_dates_range = datetime.fromisoformat(start_date).strftime("%d %B, %Y") + " – " + datetime.fromisoformat(end_date).strftime("%d %B, %Y")
     generated_on_date = "Report Generated : " + datetime.today().date().strftime("%d %B, %Y")
     
-    # Only reset lists if NOT using 100% cached data
-    if not (all_cached and not refresh_today):
-        dates_list = []
-        dates_str_list = []
-        rhr_list = []
-        steps_list = []
-        weight_list = []
-        spo2_list = []
-        sleep_record_dict = {}
-        deep_sleep_list, light_sleep_list, rem_sleep_list, awake_list, total_sleep_list, sleep_start_times_list = [],[],[],[],[],[]
-        fat_burn_minutes_list, cardio_minutes_list, peak_minutes_list = [], [], []
-        
-        # New data lists
-        hrv_list = []
-        breathing_list = []
-        cardio_fitness_list = []
-        temperature_list = []
-        calories_list = []
-        distance_list = []
-        floors_list = []
-        azm_list = []
-        eov_list = []  # Estimated Oxygen Variation for sleep apnea monitoring
-    else:
-        # Using cached data - lists already populated above
-        print(f"📊 Using {len(dates_str_list)} days from cache")
-        sleep_record_dict = {}
-        deep_sleep_list, light_sleep_list, rem_sleep_list, awake_list, total_sleep_list, sleep_start_times_list = [],[],[],[],[],[]
+    # 🚀 UNIFIED DATA LOADING: Logic is now fully cache-based above.
+    # The legacy API processing block has been removed to prevent list length mismatches.
+    # All lists (rhr_list, steps_list, etc.) are populated in the "Read all daily metrics from cache" loop.
+    
+    print(f"✅ Data processing complete. Using {len(dates_str_list)} days from cache.")
 
-    # 🚀 CACHE-FIRST: Check cache before processing API responses (only if not 100% cached)
-    if not (all_cached and not refresh_today):
-        print(f"📊 Processing data for {len(temp_dates_list)} dates...")
-        cached_daily_count = 0
-        
-        for entry in response_heartrate['activities-heart']:
-            date_str = entry['dateTime']
-            dates_str_list.append(date_str)
-            dates_list.append(datetime.strptime(date_str, '%Y-%m-%d'))
-            
-            # Extract values
-            try:
-                fat_burn = entry["value"]["heartRateZones"][1]["minutes"]
-                cardio = entry["value"]["heartRateZones"][2]["minutes"]
-                peak = entry["value"]["heartRateZones"][3]["minutes"]
-                fat_burn_minutes_list.append(fat_burn)
-                cardio_minutes_list.append(cardio)
-                peak_minutes_list.append(peak)
-            except KeyError as E:
-                fat_burn, cardio, peak = None, None, None
-                fat_burn_minutes_list.append(None)
-                cardio_minutes_list.append(None)
-                peak_minutes_list.append(None)
-            
-            if 'restingHeartRate' in entry['value']:
-                rhr = entry['value']['restingHeartRate']
-                rhr_list.append(rhr)
-            else:
-                rhr = None
-                rhr_list.append(None)
-            
-            # Cache daily metrics immediately
-            try:
-                cache.set_daily_metrics(
-                    date=date_str,
-                    resting_heart_rate=rhr,
-                    fat_burn_minutes=fat_burn,
-                    cardio_minutes=cardio,
-                    peak_minutes=peak
-                )
-                cached_daily_count += 1
-            except:
-                pass
-        
-        print(f"✅ Cached {cached_daily_count} days of heart rate data")
-        
-        # Process and cache steps (🐞 FIX: Use date-string lookup for alignment)
-        steps_cached = 0
-        # 1. Create lookup dictionary from API response
-        steps_lookup = {entry['dateTime']: int(entry['value']) for entry in response_steps.get('activities-steps', [])}
-        
-        # 2. Iterate over master date list for perfect alignment
-        for date_str in dates_str_list:
-            steps_value = steps_lookup.get(date_str)
-            
-            # Handle zero steps as None
-            if steps_value == 0:
-                steps_value = None
-            
-            steps_list.append(steps_value)
-            
-            # Cache steps
-            if steps_value is not None:
-                try:
-                    cache.set_daily_metrics(date=date_str, steps=steps_value)
-                    steps_cached += 1
-                except:
-                    pass
-        
-        print(f"✅ Cached {steps_cached} days of steps data")
-
-        # Process and cache weight
-        weight_cached = 0
-        for entry in response_weight.get("weight", []):  # FIX: Use "weight" not "body-weight"
-            date_str = entry['date']  # FIX: Use 'date' not 'dateTime'
-            # Convert kg to lbs (1 kg = 2.20462 lbs)
-            weight_list += [None]*(dates_str_list.index(date_str)-len(weight_list))
-            weight_kg = float(entry['weight'])  # FIX: Use 'weight' not 'value'
-            weight_lbs = round(weight_kg * 2.20462, 1)
-            weight_list.append(weight_lbs)
-            
-            # Extract body fat if present
-            body_fat = entry.get('fat')
-            
-            # Cache weight and body fat
-            try:
-                cache.set_daily_metrics(date=date_str, weight=weight_lbs, body_fat=body_fat)
-                weight_cached += 1
-            except:
-                pass
-        weight_list += [None]*(len(dates_str_list)-len(weight_list))
-        print(f"✅ Cached {weight_cached} days of weight data")
-        
-        # Process and cache SpO2
-        spo2_cached = 0
-        for entry in response_spo2:
-            date_str = entry["dateTime"]
-            spo2_list += [None]*(dates_str_list.index(date_str)-len(spo2_list))
-            eov_list += [None]*(dates_str_list.index(date_str)-len(eov_list))
-            
-            spo2_value = entry["value"]["avg"]
-            spo2_list.append(spo2_value)
-            
-            # Extract EOV (Estimated Oxygen Variation) if available (🐞 FIX: EOV Data Flow)
-            eov_value = None
-            if "value" in entry and isinstance(entry["value"], dict):
-                # EOV can be in different keys depending on API version
-                eov_value = entry["value"].get("eov") or entry["value"].get("variationScore")
-            eov_list.append(eov_value)
-            
-            # Cache SpO2 AND EOV (🐞 FIX: Save EOV to cache)
-            try:
-                cache.set_daily_metrics(date=date_str, spo2=spo2_value, eov=eov_value)
-                spo2_cached += 1
-            except:
-                pass
-        spo2_list += [None]*(len(dates_str_list)-len(spo2_list))
-        eov_list += [None]*(len(dates_str_list)-len(eov_list))
-        print(f"✅ Cached {spo2_cached} days of SpO2 data")
-        
-        # Process HRV data - only include dates in our range
-        for entry in response_hrv.get("hrv", []):
-            try:
-                if entry["dateTime"] in dates_str_list:  # Only process if in our date range
-                    hrv_list += [None]*(dates_str_list.index(entry["dateTime"])-len(hrv_list))
-                    hrv_list.append(entry["value"]["dailyRmssd"])
-            except (KeyError, ValueError):
-                pass
-        hrv_list += [None]*(len(dates_str_list)-len(hrv_list))
-        
-        # Process Breathing Rate data - only include dates in our range
-        for entry in response_breathing.get("br", []):
-            try:
-                if entry["dateTime"] in dates_str_list:  # Only process if in our date range
-                    breathing_list += [None]*(dates_str_list.index(entry["dateTime"])-len(breathing_list))
-                    breathing_list.append(entry["value"]["breathingRate"])
-            except (KeyError, ValueError):
-                pass
-        breathing_list += [None]*(len(dates_str_list)-len(breathing_list))
-        
-        # Process and cache Cardio Fitness Score data
-        cardio_cached = 0
-        for entry in response_cardio_fitness.get("cardioScore", []):
-            try:
-                date_str = entry["dateTime"]
-                if date_str in dates_str_list:  # Only process if in our date range
-                    cardio_fitness_list += [None]*(dates_str_list.index(date_str)-len(cardio_fitness_list))
-                    vo2max_value = entry["value"]["vo2Max"]
-                    
-                    # Handle range values (e.g., "42-46") by taking the midpoint
-                    if isinstance(vo2max_value, str) and '-' in vo2max_value:
-                        parts = vo2max_value.split('-')
-                        if len(parts) == 2:
-                            try:
-                                vo2max_value = (float(parts[0]) + float(parts[1])) / 2
-                            except:
-                                vo2max_value = float(parts[0])  # Use first value if conversion fails
-                    
-                    vo2max_final = float(vo2max_value) if vo2max_value else None
-                    cardio_fitness_list.append(vo2max_final)
-                    
-                    # Cache cardio fitness
-                    try:
-                        if vo2max_final is not None:
-                            cache.set_cardio_fitness(date=date_str, vo2_max=vo2max_final)
-                            cardio_cached += 1
-                    except:
-                        pass
-            except (KeyError, ValueError, TypeError):
-                pass
-        cardio_fitness_list += [None]*(len(dates_str_list)-len(cardio_fitness_list))
-        print(f"✅ Cached {cardio_cached} days of cardio fitness data")
-        
-        # Process Temperature data - only include dates in our range
-        for entry in response_temperature.get("tempSkin", []):
-            try:
-                if entry["dateTime"] in dates_str_list:  # Only process if in our date range
-                    temperature_list += [None]*(dates_str_list.index(entry["dateTime"])-len(temperature_list))
-                    # Temperature value might be nested or direct
-                    if isinstance(entry["value"], dict):
-                        temperature_list.append(entry["value"].get("nightlyRelative", entry["value"].get("value")))
-                    else:
-                        temperature_list.append(entry["value"])
-            except (KeyError, ValueError):
-                pass
-        temperature_list += [None]*(len(dates_str_list)-len(temperature_list))
-        
-        # Process and cache Calories data (🐞 FIX: Use date-string lookup for alignment)
-        calories_cached = 0
-        # 1. Create lookup dictionary from API response
-        calories_lookup = {}
-        for entry in response_calories.get('activities-calories', []):
-            try:
-                calories_lookup[entry['dateTime']] = int(entry['value'])
-            except (KeyError, ValueError):
-                pass
-        
-        # 2. Iterate over master date list for perfect alignment
-        for date_str in dates_str_list:
-            calories_value = calories_lookup.get(date_str)
-            calories_list.append(calories_value)
-            
-            # Cache calories
-            if calories_value is not None:
-                try:
-                    cache.set_daily_metrics(date=date_str, calories=calories_value)
-                    calories_cached += 1
-                except:
-                    pass
-        
-        print(f"✅ Cached {calories_cached} days of calories data")
-        
-        # Process and cache Distance data (🐞 FIX: Use date-string lookup for alignment)
-        distance_cached = 0
-        # 1. Create lookup dictionary from API response
-        distance_lookup = {}
-        for entry in response_distance.get('activities-distance', []):
-            try:
-                # Convert km to miles (1 km = 0.621371 miles)
-                distance_km = float(entry['value'])
-                distance_miles = round(distance_km * 0.621371, 2)
-                distance_lookup[entry['dateTime']] = distance_miles
-            except (KeyError, ValueError):
-                pass
-        
-        # 2. Iterate over master date list for perfect alignment
-        for date_str in dates_str_list:
-            distance_value = distance_lookup.get(date_str)
-            distance_list.append(distance_value)
-            
-            # Cache distance
-            if distance_value is not None:
-                try:
-                    cache.set_daily_metrics(date=date_str, distance=distance_value)
-                    distance_cached += 1
-                except:
-                    pass
-        
-        print(f"✅ Cached {distance_cached} days of distance data")
-        
-        # Process and cache Floors data (🐞 FIX: Use date-string lookup for alignment)
-        floors_cached = 0
-        # 1. Create lookup dictionary from API response
-        floors_lookup = {}
-        for entry in response_floors.get('activities-floors', []):
-            try:
-                floors_lookup[entry['dateTime']] = int(entry['value'])
-            except (KeyError, ValueError):
-                pass
-        
-        # 2. Iterate over master date list for perfect alignment
-        for date_str in dates_str_list:
-            floors_value = floors_lookup.get(date_str)
-            floors_list.append(floors_value)
-            
-            # Cache floors
-            if floors_value is not None:
-                try:
-                    cache.set_daily_metrics(date=date_str, floors=floors_value)
-                    floors_cached += 1
-                except:
-                    pass
-        
-        print(f"✅ Cached {floors_cached} days of floors data")
-        
-        # Process and cache Active Zone Minutes data (🐞 FIX: Use date-string lookup for alignment)
-        azm_cached = 0
-        # 1. Create lookup dictionary from API response
-        azm_lookup = {}
-        for entry in response_azm.get('activities-active-zone-minutes', []):
-            try:
-                azm_lookup[entry['dateTime']] = entry['value']['activeZoneMinutes']
-            except (KeyError, ValueError):
-                pass
-        
-        # 2. Iterate over master date list for perfect alignment
-        for date_str in dates_str_list:
-            azm_value = azm_lookup.get(date_str)
-            azm_list.append(azm_value)
-            
-            # Cache AZM
-            if azm_value is not None:
-                try:
-                    cache.set_daily_metrics(date=date_str, active_zone_minutes=azm_value)
-                    azm_cached += 1
-                except:
-                    pass
-        
-        print(f"✅ Cached {azm_cached} days of AZM data")
-    else:
-        # Using 100% cached data - skip all API processing
-        print("📊 All daily metrics loaded from cache - skipping API processing")
 
     # 🚀 USE CACHE FOR SLEEP DATA - Only fetch missing dates!
     print(f"📊 Fetching sleep data for {len(dates_str_list)} dates...")
