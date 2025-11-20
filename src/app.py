@@ -117,139 +117,6 @@ sys.stdout = LoggerWriter('stdout')
 sys.stderr = LoggerWriter('stderr')
 
 # ============================================================
-# FETCH TODAY'S UP-TO-DATE STATS
-# ============================================================
-def fetch_todays_stats(oauth_token, cache_manager):
-    """
-    Fetch real-time stats for today and update cache.
-    This is called by:
-    - Report generation (when today is selected)
-    - MCP/API endpoints (for real-time data)
-    - Any feature needing current-day stats
-    
-    Returns: dict with success status and metrics
-    """
-    today = datetime.now().strftime('%Y-%m-%d')
-    print(f"🔄 Fetching TODAY's real-time stats ({today})...")
-    
-    headers = {
-        "Authorization": f"Bearer {oauth_token}",
-        "Accept": "application/json"
-    }
-    
-    metrics_fetched = {
-        'success': False,
-        'date': today,
-        'metrics': {},
-        'api_calls': 0
-    }
-    
-    try:
-        # Fetch daily metrics (1 API call per metric type)
-        daily_endpoints = {
-            'heart_rate': f"https://api.fitbit.com/1/user/-/activities/heart/date/{today}/1d.json",
-            'steps': f"https://api.fitbit.com/1/user/-/activities/steps/date/{today}/1d.json",
-            'calories': f"https://api.fitbit.com/1/user/-/activities/calories/date/{today}/1d.json",
-            'distance': f"https://api.fitbit.com/1/user/-/activities/distance/date/{today}/1d.json",
-            'floors': f"https://api.fitbit.com/1/user/-/activities/floors/date/{today}/1d.json",
-            'azm': f"https://api.fitbit.com/1/user/-/activities/active-zone-minutes/date/{today}/1d.json",
-            'spo2': f"https://api.fitbit.com/1/user/-/spo2/date/{today}.json",
-            'weight': f"https://api.fitbit.com/1/user/-/body/log/weight/date/{today}/1d.json"
-        }
-        
-        responses = {}
-        for metric, endpoint in daily_endpoints.items():
-            try:
-                response = requests.get(endpoint, headers=headers, timeout=10)
-                metrics_fetched['api_calls'] += 1
-                if response.status_code == 200:
-                    responses[metric] = response.json()
-                    print(f"✅ Fetched {metric}")
-                else:
-                    print(f"⚠️ Failed to fetch {metric}: {response.status_code}")
-            except Exception as e:
-                print(f"❌ Error fetching {metric}: {e}")
-        
-        # Process and cache the responses
-        if responses:
-            # Process heart rate
-            if 'heart_rate' in responses:
-                hr_data = responses['heart_rate']
-                process_and_cache_daily_metrics([today], 'heart_rate', hr_data, cache_manager)
-            
-            # Process steps
-            if 'steps' in responses:
-                process_and_cache_daily_metrics([today], 'steps', responses['steps'], cache_manager)
-            
-            # Process weight
-            if 'weight' in responses:
-                process_and_cache_daily_metrics([today], 'weight', responses['weight'], cache_manager)
-            
-            # Process SpO2
-            if 'spo2' in responses:
-                process_and_cache_daily_metrics([today], 'spo2', responses['spo2'], cache_manager)
-            
-            # Process calories, distance, floors, AZM
-            for metric in ['calories', 'distance', 'floors', 'azm']:
-                if metric in responses:
-                    process_and_cache_daily_metrics([today], metric, responses[metric], cache_manager)
-            
-            # Fetch sleep data
-            try:
-                sleep_response = requests.get(
-                    f"https://api.fitbit.com/1.2/user/-/sleep/date/{today}.json",
-                    headers=headers,
-                    timeout=10
-                )
-                metrics_fetched['api_calls'] += 1
-                if sleep_response.status_code == 200:
-                    populate_sleep_score_cache([today], headers, force_refresh=True)
-                    print(f"✅ Fetched sleep data")
-            except Exception as e:
-                print(f"❌ Error fetching sleep: {e}")
-            
-            # Fetch activities for today
-            try:
-                activities_response = requests.get(
-                    f"https://api.fitbit.com/1/user/-/activities/date/{today}.json",
-                    headers=headers,
-                    timeout=10
-                )
-                metrics_fetched['api_calls'] += 1
-                if activities_response.status_code == 200:
-                    activities_data = activities_response.json()
-                    if 'activities' in activities_data:
-                        for activity in activities_data['activities']:
-                            # Cache activity using set_activity method
-                            cache_manager.set_activity(
-                                activity_id=str(activity.get('logId')),
-                                date=today,
-                                activity_name=activity.get('activityName', 'Unknown'),
-                                duration_ms=activity.get('duration'),
-                                calories=activity.get('calories'),
-                                avg_heart_rate=activity.get('averageHeartRate'),
-                                steps=activity.get('steps'),
-                                distance=activity.get('distance', {}).get('value') if isinstance(activity.get('distance'), dict) else activity.get('distance'),
-                                activity_data_json=json.dumps(activity)
-                            )
-                    print(f"✅ Fetched activities")
-            except Exception as e:
-                print(f"❌ Error fetching activities: {e}")
-                import traceback
-                traceback.print_exc()
-            
-            metrics_fetched['success'] = True
-            print(f"✅ TODAY's stats fetched and cached ({metrics_fetched['api_calls']} API calls)")
-        
-        return metrics_fetched
-        
-    except Exception as e:
-        print(f"❌ Error in fetch_todays_stats: {e}")
-        import traceback
-        traceback.print_exc()
-        return metrics_fetched
-
-# ============================================================
 # CUSTOM SLEEP SCORE CALCULATION
 # ============================================================
 def calculate_sleep_scores(minutes_asleep, deep_min, rem_min, minutes_awake):
@@ -3438,36 +3305,16 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     today = datetime.now().strftime('%Y-%m-%d')
     refresh_today = today in dates_str_list
     
-    # Fetch today's real-time stats if needed
-    if refresh_today:
-        print(f"🔄 TODAY ({today}) in range - fetching real-time stats...")
-        fetch_result = fetch_todays_stats(oauth_token, cache)
-        if fetch_result['success']:
-            print(f"✅ TODAY's data refreshed ({fetch_result['api_calls']} API calls)")
-            # Remove today from missing dates since we just fetched it
-            if today in missing_dates:
-                missing_dates.remove(today)
-            # Re-check if all data is now cached
-            if not missing_dates:
-                all_cached = True
-        else:
-            print(f"⚠️ Failed to refresh TODAY's data - will show cached/empty")
-    
-    # Serve report from cache (whether 100% cached or partial)
-    if all_cached:
-        print(f"✅ 100% CACHED! Serving report from cache (0 additional API calls)")
-    else:
-        print(f"⚠️ Cache incomplete - {len(missing_dates)} days missing (excluding today if fetched).")
-        print(f"Missing dates: {missing_dates[:5]}{'...' if len(missing_dates) > 5 else ''}")
-        print(f"📊 Serving report from partial cache. Missing data will show as 'No Data Available'.")
-        print(f"💡 The background cache builder will fill in missing data automatically.")
-    
-    # Populate ALL data from cache
-    user_profile = {"user": {"displayName": "Cached User", "firstName": "Cached", "lastName": "User"}}
-    
-    # Read all daily metrics from cache (including today if just fetched)
-    print(f"📖 Reading {len(dates_str_list)} days from cache...")
-    for date_str in dates_str_list:
+    if all_cached and not refresh_today:
+        print(f"✅ 100% CACHED! Serving report from cache (0 API calls)")
+        # Skip ALL API calls - serve directly from cache
+        # Populate ALL data from cache
+        user_profile = {"user": {"displayName": "Cached User", "firstName": "Cached", "lastName": "User"}}
+        
+        # Read all daily metrics from cache
+        # (Lists already initialized at function level)
+        print(f"📖 Reading {len(dates_str_list)} days from cache...")
+        for date_str in dates_str_list:
             daily_metrics = cache.get_daily_metrics(date_str)
             
             if daily_metrics:
@@ -3529,38 +3376,53 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             
             # Dates (already in dates_str_list, just append to dates_list)
             dates_list.append(datetime.strptime(date_str, '%Y-%m-%d'))
-    
-    # Create dummy response structures (won't be used in processing)
-    response_heartrate = {"activities-heart": []}
-    response_steps = {"activities-steps": []}
-    response_weight = {"weight": []}
-    response_spo2 = []
-    response_calories = {"activities-calories": []}
-    response_distance = {"activities-distance": []}
-    response_floors = {"activities-floors": []}
-    response_azm = {"activities-active-zone-minutes": []}
-    response_hrv = {"hrv": []}
-    response_breathing = {"br": []}
-    response_temperature = {"tempSkin": []}
-    response_cardio_fitness = {"cardioScore": []}
-    
-    # 🐞 FIX: Load activities from cache (CRITICAL - was missing!)
-    print("📥 Loading activities from cache...")
-    response_activities = {"activities": []}
-    total_activities = 0
-    
-    for date_str in dates_str_list:
-        activities_for_date = cache.get_activities(date_str)
-        for act in activities_for_date:
-            # Try to parse the full activity JSON if available
-            try:
-                activity_json = act.get('activity_data_json')
-                if activity_json:
-                    full_activity = json.loads(activity_json)
-                    # Use the full activity data from cache
-                    response_activities['activities'].append(full_activity)
-                else:
-                    # Fallback: Reconstruct from basic fields
+        
+        # Create dummy response structures (won't be used in processing)
+        response_heartrate = {"activities-heart": []}
+        response_steps = {"activities-steps": []}
+        response_weight = {"weight": []}
+        response_spo2 = []
+        response_calories = {"activities-calories": []}
+        response_distance = {"activities-distance": []}
+        response_floors = {"activities-floors": []}
+        response_azm = {"activities-active-zone-minutes": []}
+        response_hrv = {"hrv": []}
+        response_breathing = {"br": []}
+        response_temperature = {"tempSkin": []}
+        response_cardio_fitness = {"cardioScore": []}
+        
+        # 🐞 FIX: Load activities from cache (CRITICAL - was missing!)
+        print("📥 Loading activities from cache...")
+        response_activities = {"activities": []}
+        total_activities = 0
+        
+        for date_str in dates_str_list:
+            activities_for_date = cache.get_activities(date_str)
+            for act in activities_for_date:
+                # Try to parse the full activity JSON if available
+                try:
+                    activity_json = act.get('activity_data_json')
+                    if activity_json:
+                        full_activity = json.loads(activity_json)
+                        # Use the full activity data from cache
+                        response_activities['activities'].append(full_activity)
+                    else:
+                        # Fallback: Reconstruct from basic fields
+                        activity_dict = {
+                            'logId': act.get('activity_id'),
+                            'activityName': act.get('activity_name'),
+                            'startTime': f"{date_str}T00:00:00.000",
+                            'duration': act.get('duration_ms'),
+                            'calories': act.get('calories'),
+                            'averageHeartRate': act.get('avg_heart_rate'),
+                            'steps': act.get('steps'),
+                            'distance': act.get('distance')
+                        }
+                        response_activities['activities'].append(activity_dict)
+                    total_activities += 1
+                except (json.JSONDecodeError, TypeError) as e:
+                    print(f"⚠️ Warning: Could not parse activity JSON for {date_str}: {e}")
+                    # Fallback to basic reconstruction
                     activity_dict = {
                         'logId': act.get('activity_id'),
                         'activityName': act.get('activity_name'),
@@ -3572,30 +3434,32 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                         'distance': act.get('distance')
                     }
                     response_activities['activities'].append(activity_dict)
-                total_activities += 1
-            except (json.JSONDecodeError, TypeError) as e:
-                print(f"⚠️ Warning: Could not parse activity JSON for {date_str}: {e}")
-                # Fallback to basic reconstruction
-                activity_dict = {
-                    'logId': act.get('activity_id'),
-                    'activityName': act.get('activity_name'),
-                    'startTime': f"{date_str}T00:00:00.000",
-                    'duration': act.get('duration_ms'),
-                    'calories': act.get('calories'),
-                    'averageHeartRate': act.get('avg_heart_rate'),
-                    'steps': act.get('steps'),
-                    'distance': act.get('distance')
-                }
-                response_activities['activities'].append(activity_dict)
-                total_activities += 1
+                    total_activities += 1
+        
+        print(f"✅ Loaded {total_activities} activities from cache")
+    elif all_cached and refresh_today:
+        print(f"🔄 Cache complete BUT refreshing TODAY ({today}) for real-time data...")
+        # Refresh today's data, but serve the rest from cache
+        missing_dates = [today]
+        all_cached = False  # Force API calls for today only
     
-    print(f"✅ Loaded {total_activities} activities from cache")
-    
-    # Create dummy response structures (not used since we read from cache)
-    response_heartrate = {"activities-heart": []}
-    response_steps = {"activities-steps": []}
-    response_weight = {"weight": []}
-    response_spo2 = []
+    if not all_cached:
+        # 🚨 CRITICAL FIX #4: STOP ALL FOREGROUND API CALLS
+        # Report generation should ONLY read from cache. If data is missing, show "Data Missing - Cache Builder Running"
+        # This prevents rate limit errors and ensures predictable behavior.
+        print(f"⚠️ Cache incomplete - {len(missing_dates)} days missing.")
+        print(f"Missing dates: {missing_dates[:5]}{'...' if len(missing_dates) > 5 else ''}")
+        print(f"📊 Serving report from partial cache. Missing data will show as 'No Data Available'.")
+        print(f"💡 The background cache builder will fill in missing data automatically.")
+        
+        # Set user profile to cached/default
+        user_profile = {"user": {"displayName": "Cached User", "firstName": "Cached", "lastName": "User"}}
+        
+        # Create empty response structures (won't make API calls)
+        response_heartrate = {"activities-heart": []}
+        response_steps = {"activities-steps": []}
+        response_weight = {"weight": []}
+        response_spo2 = []
     
     # 🚨 CRITICAL FIX #4: Always use dates_str_list (the requested date range)
     # Don't rely on API responses since we're not making foreground API calls anymore
@@ -4929,11 +4793,10 @@ def api_get_metrics(date):
             print(f"🔄 MCP API: Refreshing TODAY's metrics ({date})...")
             oauth_token = session.get('oauth_token')
             if oauth_token:
-                fetch_result = fetch_todays_stats(oauth_token, cache)
-                if fetch_result['success']:
-                    print(f"✅ MCP API: TODAY's data refreshed ({fetch_result['api_calls']} API calls)")
-                else:
-                    print(f"⚠️ MCP API: Failed to refresh TODAY's data")
+                headers = {"Authorization": f"Bearer {oauth_token}", "Accept": "application/json"}
+                # Refresh sleep data
+                populate_sleep_score_cache([date], headers, force_refresh=True)
+                # Note: Advanced metrics (HRV, BR, Temp) will be refreshed by background builder
         
         sleep_data = cache.get_sleep_data(date)
         advanced_metrics = cache.get_advanced_metrics(date)
