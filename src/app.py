@@ -4365,6 +4365,41 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     else:
         sleep_data_table_output = html.P("No sleep data available for this period.", style={'text-align': 'center', 'color': '#888'})
     
+    # Sleep Regularity Chart
+    if sleep_scores:
+        sleep_start_times = []
+        sleep_end_times = []
+        
+        for date_str in dates_str_list:
+            cached_sleep = cache.get_sleep_data(date_str)
+            if cached_sleep:
+                # Parse start time
+                start_dt = datetime.strptime(cached_sleep['start_time'], "%Y-%m-%dT%H:%M:%S.%f")
+                
+                # Adjust for display (if before noon, it's "last night", if after noon, it's "last night" but previous day)
+                # We want to plot time of day on Y axis
+                start_time_val = start_dt.hour + start_dt.minute/60.0
+                if start_time_val < 12:
+                    start_time_val += 24 # Plot as 24+ hours for consistency
+                
+                end_dt = start_dt + timedelta(minutes=cached_sleep['total_sleep'])
+                end_time_val = end_dt.hour + end_dt.minute/60.0
+                
+                sleep_start_times.append({'Date': date_str, 'Time': start_time_val, 'Type': 'Bedtime'})
+                sleep_end_times.append({'Date': date_str, 'Time': end_time_val, 'Type': 'Wake Time'})
+        
+        if sleep_start_times:
+            regularity_df = pd.DataFrame(sleep_start_times + sleep_end_times)
+            fig_sleep_regularity = px.line(regularity_df, x='Date', y='Time', color='Type',
+                                          title='Sleep Regularity (Bedtime & Wake Time)',
+                                          markers=True)
+            fig_sleep_regularity.update_yaxes(title="Time of Day", tickvals=[6, 7, 8, 9, 22, 23, 24, 25, 26],
+                                             ticktext=['6 AM', '7 AM', '8 AM', '9 AM', '10 PM', '11 PM', '12 AM', '1 AM', '2 AM'])
+        else:
+             fig_sleep_regularity = px.line(title='Sleep Regularity (No Data)')
+    else:
+        fig_sleep_regularity = px.line(title='Sleep Regularity (No Data)')
+    
     # Phase 4: Exercise-Sleep Correlation
     correlation_data = []
     for i, date_str in enumerate(dates_str_list[:-1]):  # Skip last day
