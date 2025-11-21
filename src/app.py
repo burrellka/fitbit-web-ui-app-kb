@@ -4399,6 +4399,20 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
              fig_sleep_regularity = px.line(title='Sleep Regularity (No Data)')
     else:
         fig_sleep_regularity = px.line(title='Sleep Regularity (No Data)')
+        
+    # Sleep Summary Table
+    if sleep_scores:
+        sleep_summary_df = pd.DataFrame(sleep_scores)
+        sleep_summary_table = dash_table.DataTable(
+            data=sleep_summary_df.to_dict('records'),
+            columns=[{"name": i, "id": i} for i in sleep_summary_df.columns],
+            style_data_conditional=[{'if': {'row_index': 'odd'},'backgroundColor': 'rgb(248, 248, 248)'}],
+            style_header={'backgroundColor': '#336699','fontWeight': 'bold', 'color': 'white', 'fontSize': '14px'},
+            style_cell={'textAlign': 'center'},
+            page_size=10
+        )
+    else:
+        sleep_summary_table = html.P("No sleep summary data available", style={'text-align': 'center', 'color': '#888'})
     
     # Phase 4: Exercise-Sleep Correlation
     correlation_data = []
