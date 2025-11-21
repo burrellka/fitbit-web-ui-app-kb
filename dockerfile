@@ -7,8 +7,8 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install supervisor for running multiple services
-RUN apt-get update && apt-get install -y supervisor && rm -rf /var/lib/apt/lists/*
+# Install supervisor for running multiple services and curl for healthcheck
+RUN apt-get update && apt-get install -y supervisor curl && rm -rf /var/lib/apt/lists/*
 
 # Create log directories
 RUN mkdir -p /var/log/supervisor
