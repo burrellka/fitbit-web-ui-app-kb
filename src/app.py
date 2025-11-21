@@ -4462,7 +4462,7 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                     html.P(f"✨ Best practice: Your data suggests exercising in the {'morning/afternoon' if corr_coef > 0 else 'earlier hours'} for optimal sleep quality.")
                 ])
             else:
-                correlation_insights = html.P("Need more exercise data for meaningful insights (minimum 3 workout days).")
+                correlation_insights = html.P("Need more data points for correlation analysis. Try a longer date range or log more workouts!")
         else:
             fig_correlation = px.scatter(title='Exercise-Sleep Correlation (No Exercise Data)')
             correlation_insights = html.P("No exercise activities found in this period.")
@@ -4516,6 +4516,80 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             fig_azm_sleep_correlation = px.scatter(title='AZM-Sleep Correlation (Insufficient Data)')
     else:
         fig_azm_sleep_correlation = px.scatter(title='AZM-Sleep Correlation (Insufficient Data)')
+
+    # --- RESTORED ADVANCED METRICS CHARTS ---
+    
+    # HRV Chart
+    hrv_data = []
+    for item in response_hrv.get('hrv', []):
+        hrv_data.append({'Date': item['dateTime'], 'HRV': item['value']['dailyRmssd']})
+    
+    if hrv_data:
+        hrv_df = pd.DataFrame(hrv_data)
+        fig_hrv = px.line(hrv_df, x='Date', y='HRV', title='Heart Rate Variability (HRV)', markers=True)
+        fig_hrv.update_layout(yaxis_title='HRV (ms)')
+        hrv_summary_df = calculate_table_data(hrv_df, 'HRV')
+        hrv_summary_table = dash_table.DataTable(hrv_summary_df.to_dict('records'), [{"name": i, "id": i} for i in hrv_summary_df.columns], 
+                                                 style_header={'backgroundColor': '#336699','fontWeight': 'bold', 'color': 'white'},
+                                                 style_cell={'textAlign': 'center'})
+    else:
+        fig_hrv = px.line(title='Heart Rate Variability (No Data)')
+        hrv_summary_table = html.P("No HRV data available")
+
+    # Breathing Rate Chart
+    br_data = []
+    for item in response_breathing.get('br', []):
+        br_data.append({'Date': item['dateTime'], 'Breathing Rate': item['value']['breathingRate']})
+    
+    if br_data:
+        br_df = pd.DataFrame(br_data)
+        fig_breathing = px.line(br_df, x='Date', y='Breathing Rate', title='Breathing Rate (bpm)', markers=True)
+        fig_breathing.update_layout(yaxis_title='Breathing Rate (bpm)')
+        breathing_summary_df = calculate_table_data(br_df, 'Breathing Rate')
+        breathing_summary_table = dash_table.DataTable(breathing_summary_df.to_dict('records'), [{"name": i, "id": i} for i in breathing_summary_df.columns],
+                                                       style_header={'backgroundColor': '#336699','fontWeight': 'bold', 'color': 'white'},
+                                                       style_cell={'textAlign': 'center'})
+    else:
+        fig_breathing = px.line(title='Breathing Rate (No Data)')
+        breathing_summary_table = html.P("No Breathing Rate data available")
+
+    # Temperature Chart
+    temp_data = []
+    for item in response_temperature.get('tempSkin', []):
+        temp_data.append({'Date': item['dateTime'], 'Temperature': item['value']})
+    
+    if temp_data:
+        temp_df = pd.DataFrame(temp_data)
+        fig_temperature = px.line(temp_df, x='Date', y='Temperature', title='Skin Temperature Variation', markers=True)
+        fig_temperature.update_layout(yaxis_title='Temp Variation (°F)')
+        temperature_summary_df = calculate_table_data(temp_df, 'Temperature')
+        temperature_summary_table = dash_table.DataTable(temperature_summary_df.to_dict('records'), [{"name": i, "id": i} for i in temperature_summary_df.columns],
+                                                         style_header={'backgroundColor': '#336699','fontWeight': 'bold', 'color': 'white'},
+                                                         style_cell={'textAlign': 'center'})
+    else:
+        fig_temperature = px.line(title='Skin Temperature (No Data)')
+        temperature_summary_table = html.P("No Temperature data available")
+
+    # Cardio Fitness Chart
+    cardio_data = []
+    for item in response_cardio_fitness.get('cardioScore', []):
+        # Handle different structures of cardio score
+        val = item.get('value', {})
+        score = val.get('vo2Max') if isinstance(val, dict) else val
+        if score:
+            cardio_data.append({'Date': item['dateTime'], 'Cardio Score': score})
+        
+    if cardio_data:
+        cardio_df = pd.DataFrame(cardio_data)
+        fig_cardio_fitness = px.line(cardio_df, x='Date', y='Cardio Score', title='Cardio Fitness Score (VO2 Max)', markers=True)
+        fig_cardio_fitness.update_layout(yaxis_title='VO2 Max')
+        cardio_fitness_summary_df = calculate_table_data(cardio_df, 'Cardio Score')
+        cardio_fitness_summary_table = dash_table.DataTable(cardio_fitness_summary_df.to_dict('records'), [{"name": i, "id": i} for i in cardio_fitness_summary_df.columns],
+                                                            style_header={'backgroundColor': '#336699','fontWeight': 'bold', 'color': 'white'},
+                                                            style_cell={'textAlign': 'center'})
+    else:
+        fig_cardio_fitness = px.line(title='Cardio Fitness (No Data)')
+        cardio_fitness_summary_table = html.P("No Cardio Fitness data available")
     
     # 🐞 FIX: Serialize the collected activity data to JSON for the dcc.Store
     exercise_data_json = json.dumps(activities_by_date)
