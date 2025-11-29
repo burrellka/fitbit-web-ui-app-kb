@@ -257,6 +257,41 @@ Interpretation:
         return f"Error analyzing consistency: {str(e)}"
 
 @mcp.tool()
+def get_sleep_log(start_date: str, end_date: str, sessionId: str = "", action: str = "", chatInput: str = "", toolCallId: str = "") -> str:
+    """
+    Get a daily log of sleep metrics for a date range.
+    Useful for finding the 'best' or 'worst' night of sleep.
+    
+    Args:
+        start_date: Start date in 'YYYY-MM-DD' format.
+        end_date: End date in 'YYYY-MM-DD' format.
+    """
+    try:
+        current = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+        
+        output = [f"😴 Sleep Log ({start_date} to {end_date})"]
+        
+        while current <= end:
+            d_str = current.strftime("%Y-%m-%d")
+            s = cache.get_sleep_data(d_str)
+            
+            if s:
+                score = s.get('reality_score') or s.get('fitbit_score') or 0
+                duration = s.get('total_sleep', 0)
+                deep = s.get('deep', 0)
+                rem = s.get('rem', 0)
+                output.append(f"- {d_str}: Score {score} | {duration} min (Deep: {deep}, REM: {rem})")
+            else:
+                output.append(f"- {d_str}: No data")
+                
+            current += timedelta(days=1)
+            
+        return "\n".join(output)
+    except Exception as e:
+        return f"Error fetching sleep log: {str(e)}"
+
+@mcp.tool()
 def get_workout_history(start_date: str, end_date: str, sessionId: str = "", action: str = "", chatInput: str = "", toolCallId: str = "") -> str:
     """
     Get detailed workout logs with calculated Intensity Score.
