@@ -482,6 +482,213 @@ Interpretation: {strength} {relationship} Correlation.
     except Exception as e:
         return f"Error calculating correlation: {str(e)}"
 
+    except Exception as e:
+        return f"Error calculating correlation: {str(e)}"
+
+# --- Health Coach 2.0 Tools ---
+
+@mcp.tool()
+def get_lifetime_stats(sessionId: str = "", action: str = "", chatInput: str = "", toolCallId: str = "") -> str:
+    """
+    Get lifetime aggregated stats (Steps, Distance, Floors) from the local cache.
+    Note: This represents 'Lifetime in Cache', not necessarily total Fitbit account lifetime.
+    """
+    try:
+        # We need direct DB access for aggregation
+        import sqlite3
+        conn = sqlite3.connect(cache.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT SUM(steps), SUM(distance), SUM(floors), COUNT(date)
+            FROM daily_metrics_cache
+        ''')
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            return "No data found in cache."
+            
+        steps = result[0] or 0
+        dist = result[1] or 0
+        floors = result[2] or 0
+        days = result[3] or 0
+        
+        # Fun comparisons
+        earth_circumference_km = 40075
+        pct_earth = (dist / earth_circumference_km) * 100
+        
+        everest_floors = 2900 # Approx
+        pct_everest = (floors / everest_floors) * 100
+        
+        return f"""
+🏆 Lifetime Stats (Cached Data - {days} days)
+----------------------------------------
+👣 Steps: {steps:,}
+🌍 Distance: {dist:,.1f} km ({pct_earth:.2f}% of Earth's circumference)
+🧗 Floors: {floors:,} ({pct_everest:.2f}% of Mt. Everest)
+"""
+    except Exception as e:
+        return f"Error calculating lifetime stats: {str(e)}"
+
+@mcp.tool()
+def get_badges(sessionId: str = "", action: str = "", chatInput: str = "", toolCallId: str = "") -> str:
+    """
+    Get a list of earned badges.
+    (Currently a placeholder as badges are not yet cached)
+    """
+    return "🏆 Badges are not yet synchronized to the local cache. Stay tuned for updates!"
+
+@mcp.tool()
+def get_zone_analysis(start_date: str, end_date: str, sessionId: str = "", action: str = "", chatInput: str = "", toolCallId: str = "") -> str:
+    """
+    Analyze Heart Rate Zones (Fat Burn, Cardio, Peak) for a date range.
+    """
+    try:
+        import sqlite3
+        conn = sqlite3.connect(cache.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT date, fat_burn_minutes, cardio_minutes, peak_minutes, active_zone_minutes
+            FROM daily_metrics_cache
+            WHERE date >= ? AND date <= ?
+            ORDER BY date ASC
+        ''', (start_date, end_date))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows:
+            return f"No zone data found between {start_date} and {end_date}."
+            
+        output = [f"🔥 Zone Analysis ({start_date} to {end_date})"]
+        
+        total_fat = 0
+        total_cardio = 0
+        total_peak = 0
+        
+        for row in rows:
+            d, fat, cardio, peak, azm = row
+            fat = fat or 0
+            cardio = cardio or 0
+            peak = peak or 0
+            
+            total_fat += fat
+            total_cardio += cardio
+            total_peak += peak
+            
+            output.append(f"- {d}: Fat Burn {fat}m | Cardio {cardio}m | Peak {peak}m ({azm} AZM)")
+            
+        output.append("-" * 30)
+        output.append(f"Totals: Fat Burn {total_fat}m | Cardio {total_cardio}m | Peak {total_peak}m")
+        
+        return "\n".join(output)
+    except Exception as e:
+        return f"Error analyzing zones: {str(e)}"
+
+@mcp.tool()
+def get_activity_log(start_date: str, end_date: str, sessionId: str = "", action: str = "", chatInput: str = "", toolCallId: str = "") -> str:
+    """
+    Get a raw list of activities for a date range.
+    """
+    try:
+        activities = cache.get_activities_in_range(start_date, end_date)
+        if not activities:
+            return f"No activities found between {start_date} and {end_date}."
+            
+        output = [f"📝 Activity Log ({start_date} to {end_date})"]
+        
+        for act in activities:
+            # Handle different formats (cached dict vs raw)
+            name = act.get('activityName', 'Unknown')
+            date = act.get('startTime', '')[:10]
+            cals = act.get('calories', 0)
+            duration = act.get('duration', 0) // 60000
+            
+            output.append(f"- {date}: {name} ({duration} min, {cals} kcal)")
+            
+        return "\n".join(output)
+    except Exception as e:
+        return f"Error fetching activity log: {str(e)}"
+
+# --- Dynamic Data Explorer ---
+
+@mcp.tool()
+def inspect_schema(sessionId: str = "", action: str = "", chatInput: str = "", toolCallId: str = "") -> str:
+    """
+    Get the database schema (list of tables and their columns).
+    Useful for understanding what data is available for SQL queries.
+    """
+    try:
+        import sqlite3
+        conn = sqlite3.connect(cache.db_path)
+        cursor = conn.cursor()
+        
+        # Get tables
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cursor.fetchall()
+        
+        output = ["🗄️ Database Schema"]
+        
+        for t in tables:
+            table_name = t[0]
+            output.append(f"\nTable: {table_name}")
+            
+            # Get columns
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            columns = cursor.fetchall()
+            for c in columns:
+                # cid, name, type, notnull, dflt_value, pk
+                output.append(f"  - {c[1]} ({c[2]})")
+                
+        conn.close()
+        return "\n".join(output)
+    except Exception as e:
+        return f"Error inspecting schema: {str(e)}"
+
+@mcp.tool()
+def run_sql_query(query: str, sessionId: str = "", action: str = "", chatInput: str = "", toolCallId: str = "") -> str:
+    """
+    Execute a READ-ONLY SQL query against the local database.
+    WARNING: Only SELECT statements are allowed.
+    
+    Args:
+        query: The SQL query string (e.g., "SELECT date, steps FROM daily_metrics_cache LIMIT 5")
+    """
+    try:
+        # Security Check
+        normalized = query.strip().upper()
+        if not normalized.startswith("SELECT"):
+            return "⛔ Security Error: Only SELECT queries are allowed."
+            
+        forbidden = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "TRUNCATE", "REPLACE"]
+        for word in forbidden:
+            if word in normalized:
+                return f"⛔ Security Error: Keyword '{word}' is not allowed."
+        
+        import sqlite3
+        conn = sqlite3.connect(cache.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        columns = [description[0] for description in cursor.description]
+        
+        conn.close()
+        
+        if not rows:
+            return "Query returned no results."
+            
+        # Format as JSON for the LLM to parse easily
+        results = []
+        for row in rows:
+            results.append(dict(zip(columns, row)))
+            
+        return json.dumps(results, indent=2)
+        
+    except Exception as e:
+        return f"SQL Error: {str(e)}"
+
 # --- Resources ---
 
 @mcp.resource("fitbit://prompts/personas")

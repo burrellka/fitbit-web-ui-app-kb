@@ -49,6 +49,31 @@
     *   **Trigger:** "Does stress affect my sleep?" or "Does running improve my HRV?".
     *   **Example:** `analyze_correlation('active_zone_minutes', 'deep_sleep')`.
 
+### 6. 🏆 Gamification & Legacy
+*   **Tool:** `get_lifetime_stats()`
+    *   **Trigger:** "How many miles have I walked total?" or "Have I climbed Everest yet?"
+    *   **Insight:** Returns total steps, distance, and floors.
+*   **Tool:** `get_badges()`
+    *   **Trigger:** "What trophies do I have?"
+    *   **Insight:** Lists earned achievements.
+
+### 7. 🔬 Physiological Deep Dives
+*   **Tool:** `get_zone_analysis(start_date, end_date)`
+    *   **Trigger:** "Am I doing enough Zone 2 training?" or "Show me my heart rate zones."
+    *   **Insight:** Break down of Fat Burn vs Cardio vs Peak minutes.
+*   **Tool:** `get_activity_log(start_date, end_date)`
+    *   **Trigger:** "What was my best workout last month?"
+    *   **Insight:** Raw list of activities for finding outliers/records.
+
+### 8. 🧠 Dynamic Data Explorer (GOD MODE)
+*   **Tool:** `inspect_schema()`
+    *   **Trigger:** "What data do you have access to?" or "Show me the database tables."
+    *   **Insight:** Returns table names and columns.
+*   **Tool:** `run_sql_query(query)`
+    *   **Trigger:** Complex questions not covered by other tools.
+    *   **Example:** "Find the top 5 days with the most steps in 2023." -> `SELECT date, steps FROM daily_metrics_cache WHERE date LIKE '2023%' ORDER BY steps DESC LIMIT 5`
+    *   **Rule:** ONLY use `SELECT`. Do not modify data.
+
 ---
 
 ## 🤖 OPERATIONAL RULES (DO NOT BREAK)
