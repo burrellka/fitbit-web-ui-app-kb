@@ -109,7 +109,7 @@ def _calculate_readiness(date: str) -> Dict[str, Any]:
 # --- Tools ---
 
 @mcp.tool()
-def get_daily_snapshot(date: str, sessionId: str = "", action: str = "", chatInput: str = "") -> str:
+def get_daily_snapshot(date: str, sessionId: str = "", action: str = "", chatInput: str = "", toolCallId: str = "") -> str:
     """
     Get a holistic 'Morning Briefing' view for a specific date.
     Includes Sleep, Activity, Biometrics, and a calculated Readiness Score.
@@ -149,7 +149,7 @@ def get_daily_snapshot(date: str, sessionId: str = "", action: str = "", chatInp
         return f"Error generating snapshot: {str(e)}"
 
 @mcp.tool()
-def get_readiness_breakdown(date: str, sessionId: str = "", action: str = "", chatInput: str = "") -> str:
+def get_readiness_breakdown(date: str, sessionId: str = "", action: str = "", chatInput: str = "", toolCallId: str = "") -> str:
     """
     Explain WHY the readiness score is what it is.
     Useful for 'Why am I tired?' or 'Should I train hard?'
@@ -187,7 +187,7 @@ def get_readiness_breakdown(date: str, sessionId: str = "", action: str = "", ch
         return f"Error getting readiness breakdown: {str(e)}"
 
 @mcp.tool()
-def get_sleep_consistency(days: int = 30, sessionId: str = "", action: str = "", chatInput: str = "") -> str:
+def get_sleep_consistency(days: int = 30, sessionId: str = "", action: str = "", chatInput: str = "", toolCallId: str = "") -> str:
     """
     Analyze sleep hygiene (bedtime/wake time consistency) over the last N days.
     """
@@ -257,7 +257,7 @@ Interpretation:
         return f"Error analyzing consistency: {str(e)}"
 
 @mcp.tool()
-def get_workout_history(start_date: str, end_date: str, sessionId: str = "", action: str = "", chatInput: str = "") -> str:
+def get_workout_history(start_date: str, end_date: str, sessionId: str = "", action: str = "", chatInput: str = "", toolCallId: str = "") -> str:
     """
     Get detailed workout logs with calculated Intensity Score.
     
@@ -292,7 +292,7 @@ def get_workout_history(start_date: str, end_date: str, sessionId: str = "", act
         return f"Error fetching history: {str(e)}"
 
 @mcp.tool()
-def get_comparative_trends(metric: str, period_1_days: int = 7, period_2_days: int = 30, sessionId: str = "", action: str = "", chatInput: str = "") -> str:
+def get_comparative_trends(metric: str, period_1_days: int = 7, period_2_days: int = 30, sessionId: str = "", action: str = "", chatInput: str = "", toolCallId: str = "") -> str:
     """
     Compare a metric between two timeframes (e.g., Last 7 days vs Previous 30 days).
     Metrics: sleep_score, resting_heart_rate, hrv, active_zone_minutes, steps
@@ -354,7 +354,7 @@ Change: {direction} {round(diff, 1)} ({round(pct, 1)}%)
         return f"Error calculating trends: {str(e)}"
 
 @mcp.tool()
-def analyze_correlation(metric_a: str, metric_b: str, days: int = 60, sessionId: str = "", action: str = "", chatInput: str = "") -> str:
+def analyze_correlation(metric_a: str, metric_b: str, days: int = 60, sessionId: str = "", action: str = "", chatInput: str = "", toolCallId: str = "") -> str:
     """
     Calculate Pearson correlation between two metrics over N days.
     Discover relationships like 'Does AZM affect Sleep Score?'
