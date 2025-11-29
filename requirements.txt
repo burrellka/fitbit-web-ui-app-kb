@@ -1,9 +1,9 @@
-dash==2.11.1
-pandas==2.0.3
-numpy==1.25.0
-plotly==5.15.0
-requests==2.29.0
+dash
+pandas>=2.0.3
+numpy>=1.25.0
+plotly>=5.15.0
+requests>=2.29.0
 gunicorn
 fastmcp
 dash-tools
-statsmodels==0.14.0
+statsmodels>=0.14.0
