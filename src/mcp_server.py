@@ -113,6 +113,9 @@ def get_daily_snapshot(date: str) -> str:
     """
     Get a holistic 'Morning Briefing' view for a specific date.
     Includes Sleep, Activity, Biometrics, and a calculated Readiness Score.
+    
+    Args:
+        date: Date in 'YYYY-MM-DD' format (e.g., '2023-10-27').
     """
     try:
         daily = cache.get_daily_metrics(date)
@@ -150,6 +153,9 @@ def get_readiness_breakdown(date: str) -> str:
     """
     Explain WHY the readiness score is what it is.
     Useful for 'Why am I tired?' or 'Should I train hard?'
+    
+    Args:
+        date: Date in 'YYYY-MM-DD' format.
     """
     try:
         r = _calculate_readiness(date)
@@ -254,6 +260,10 @@ Interpretation:
 def get_workout_history(start_date: str, end_date: str) -> str:
     """
     Get detailed workout logs with calculated Intensity Score.
+    
+    Args:
+        start_date: Start date in 'YYYY-MM-DD' format.
+        end_date: End date in 'YYYY-MM-DD' format.
     """
     try:
         activities = cache.get_activities_in_range(start_date, end_date)
