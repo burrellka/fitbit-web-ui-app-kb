@@ -32,7 +32,6 @@ services:
       # Note: Mount parent directory, not the file directly (Docker creates directories for non-existent files)
       - ./data:/app/data
       - ./logs:/app/logs
-      - ./src:/app/src
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:5033/api/health" ]
       interval: 60s
