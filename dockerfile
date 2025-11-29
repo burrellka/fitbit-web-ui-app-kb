@@ -19,8 +19,8 @@ RUN pip install --no-cache-dir --upgrade -r requirements.txt
 COPY ./src/ /app/src
 COPY ./supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Expose both ports: 5032 for OAuth callback (public), 5033 for dashboard (internal)
-EXPOSE 5032 5033
+# Expose ports: 5032 (OAuth), 5033 (Dashboard), 8000 (MCP SSE)
+EXPOSE 5032 5033 8000
 
 # Run as root (supervisor requires it)
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

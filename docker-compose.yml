@@ -1,17 +1,18 @@
 services:
   fitbit-ui-enhanced:
     build: .
-    image: fitbit-wellness-enhanced:latest  # Your custom image name
+    image: fitbit-wellness-enhanced:latest # Your custom image name
     container_name: fitbit-report-app-enhanced
     ports:
-      - "5032:5032"  # OAuth callback port
-      - "5033:5033"  # Main dashboard port
+      - "5032:5032" # OAuth callback port
+      - "5033:5033" # Main dashboard port
+      - "8000:8000" # MCP Server (SSE)
     restart: unless-stopped
     logging:
       driver: "json-file"
       options:
-        max-size: "50m"     # Max size per log file
-        max-file: "3"       # Keep 3 rotated files (150MB total)
+        max-size: "50m" # Max size per log file
+        max-file: "3" # Keep 3 rotated files (150MB total)
     environment:
       - CLIENT_ID=${CLIENT_ID}
       - CLIENT_SECRET=${CLIENT_SECRET}
@@ -31,8 +32,9 @@ services:
       # Note: Mount parent directory, not the file directly (Docker creates directories for non-existent files)
       - ./data:/app/data
       - ./logs:/app/logs
+      - ./src:/app/src
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5033/api/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:5033/api/health" ]
       interval: 60s
       timeout: 10s
       retries: 5

@@ -1454,29 +1454,42 @@ def fetch_todays_stats(date_str, access_token):
             'active_zone_minutes': 'activities/active-zone-minutes'
         }
         
+        activity_updates = {}
+        
         for metric_name, endpoint in metrics.items():
             url = f"https://api.fitbit.com/1/user/-/{endpoint}/date/{date_str}/1d.json"
-            response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                data = response.json()
-                key = f"activities-{metric_name.replace('_', '-')}"
-                if key in data and data[key]:
-                    val = data[key][0]['value']
-                    
-                    # Handle specific formats
-                    if metric_name == 'active_zone_minutes':
-                        val = val.get('activeZoneMinutes', 0)
-                    elif metric_name == 'distance':
-                        # Convert km to miles
-                        val = float(val) * 0.621371
-                    else:
-                        val = float(val)
+            try:
+                response = requests.get(url, headers=headers)
+                if response.status_code == 200:
+                    data = response.json()
+                    key = f"activities-{metric_name.replace('_', '-')}"
+                    if key in data and data[key]:
+                        val = data[key][0]['value']
                         
-                    # Update cache
-                    kwargs = {metric_name: val}
-                    cache.set_daily_metrics(date=date_str, **kwargs)
-                    fetched_data[metric_name] = True
-                    print(f"   ✅ Fetched {metric_name}")
+                        # Handle specific formats
+                        if metric_name == 'active_zone_minutes':
+                            if isinstance(val, dict):
+                                val = val.get('activeZoneMinutes', 0)
+                            else:
+                                val = 0 # Fallback if unexpected format
+                        elif metric_name == 'distance':
+                            # Convert km to miles
+                            val = float(val) * 0.621371
+                        else:
+                            val = float(val)
+                            
+                        activity_updates[metric_name] = val
+                        fetched_data[metric_name] = True
+                        print(f"   ✅ Fetched {metric_name}: {val}")
+                else:
+                    print(f"   ⚠️ Failed to fetch {metric_name}: Status {response.status_code} - {response.text[:100]}")
+            except Exception as e:
+                print(f"   ⚠️ Exception fetching {metric_name}: {e}")
+
+        # Batch update cache for activity metrics
+        if activity_updates:
+            print(f"   💾 Saving activity metrics to cache: {list(activity_updates.keys())}")
+            cache.set_daily_metrics(date=date_str, **activity_updates)
 
         # 3. Weight
         url = f"https://api.fitbit.com/1/user/-/body/log/weight/date/{date_str}/1d.json"
@@ -2173,11 +2186,11 @@ app.layout = html.Div(children=[
         
         html.H4("Sleep Quality Analysis 😴", style={'font-weight': 'bold'}),
         html.H6("Comprehensive sleep metrics including sleep score, stage distribution, and consistency patterns."),
-        html.Div(style={'display': 'flex', 'flex-wrap': 'wrap', 'gap': '20px', 'justify-content': 'center'}, children=[
-            html.Div(style={'flex': '1', 'min-width': '400px'}, children=[
+        html.Div(style={'display': 'flex', 'flex-direction': 'column', 'gap': '20px'}, children=[
+            html.Div(style={'width': '100%'}, children=[
                 dcc.Graph(id='graph_sleep_score', figure=px.line(), config={'displaylogo': False}),
             ]),
-            html.Div(style={'flex': '1', 'min-width': '400px'}, children=[
+            html.Div(style={'width': '100%'}, children=[
                 dcc.Graph(id='graph_sleep_stages_pie', figure=px.pie(), config={'displaylogo': False}),
             ]),
         ]),
@@ -2197,6 +2210,11 @@ app.layout = html.Div(children=[
         
         html.H4("Exercise ↔ Sleep Correlations 🔗", style={'font-weight': 'bold'}),
         html.H6("Discover how your workouts impact your sleep quality and next-day recovery."),
+        
+        # New Exercise Timeline Graph
+        dcc.Graph(id='graph_exercise_timeline', figure=px.bar(), config={'displaylogo': False}),
+        html.Div(style={"height": '20px'}),
+        
         html.Div(style={'display': 'flex', 'flex-wrap': 'wrap', 'gap': '20px', 'justify-content': 'center'}, children=[
             html.Div(style={'flex': '1', 'min-width': '500px'}, children=[
                 dcc.Graph(id='graph_exercise_sleep_correlation', figure=px.scatter(), config={'displaylogo': False}),
@@ -2540,19 +2558,26 @@ sleep_detail_data_store = {}
 
 @app.callback(
     Output('workout-detail-display', 'children'),
+    Output('oauth-token', 'data', allow_duplicate=True),
+    Output('refresh-token', 'data', allow_duplicate=True),
+    Output('token-expiry', 'data', allow_duplicate=True),
     Input('workout-date-selector', 'value'),
     State('oauth-token', 'data'),
-    State('refresh-token', 'data'),  # <-- ADD REFRESH TOKEN
-    State('token-expiry', 'data')    # <-- ADD EXPIRY
+    State('refresh-token', 'data'),
+    State('token-expiry', 'data'),
+    prevent_initial_call=True
 )
-def display_workout_details(selected_date, oauth_token, refresh_token, token_expiry):  # <-- ADD ARGUMENTS
+def display_workout_details(selected_date, oauth_token, refresh_token, token_expiry):
     """
     Display detailed workout information including HR zones for selected date.
     🐞 FIX: This function now fetches data directly from the cache.
     🐞 CRITICAL FIX #2: Add token refresh logic before making API calls
     """
+    # Default return values (no token update)
+    no_update = dash.no_update
+    
     if not selected_date or not oauth_token:
-        return html.Div("Select a workout date to view details", style={'color': '#999', 'font-style': 'italic'})
+        return html.Div("Select a workout date to view details", style={'color': '#999', 'font-style': 'italic'}), no_update, no_update, no_update
     
     # === START CRITICAL FIX #2: REFRESH TOKEN IF NEEDED ===
     current_time = time.time()
@@ -2568,21 +2593,29 @@ def display_workout_details(selected_date, oauth_token, refresh_token, token_exp
                 session['token_expiry'] = new_expiry
                 cache.store_refresh_token(new_refresh, 28800)  # Store it persistently
                 print(f"✅ [WORKOUT_DETAILS] Token refreshed successfully")
+                
+                # Return new tokens to update client-side stores
+                return generate_workout_detail_view(selected_date), new_access, new_refresh, new_expiry
             else:
                 print(f"⚠️ [WORKOUT_DETAILS] Token refresh failed")
-                return html.Div("Error: Token refresh failed. Please log in again.", style={'color': 'red'})
+                return html.Div("Error: Token refresh failed. Please log in again.", style={'color': 'red'}), no_update, no_update, no_update
         except Exception as e:
             print(f"❌ [WORKOUT_DETAILS] Error refreshing token: {e}")
             import traceback
             traceback.print_exc()
-            return html.Div(f"Error refreshing token: {e}", style={'color': 'red'})
+            return html.Div(f"Error refreshing token: {e}", style={'color': 'red'}), no_update, no_update, no_update
     # === END CRITICAL FIX #2 ===
     
+    return generate_workout_detail_view(selected_date), no_update, no_update, no_update
+
+def generate_workout_detail_view(selected_date):
+    """Helper to generate the workout detail view content"""
     # Get stored activity data for the date directly from cache
     activities_from_cache = cache.get_activities(selected_date)
     
     if not activities_from_cache:
         return html.Div(f"No workout data available in cache for {selected_date}", style={'color': '#999'})
+
 
     # Reconstruct activities from cache
     activities = []
@@ -3406,7 +3439,17 @@ def disable_button_and_calculate(n_clicks, oauth_token, refresh_token, token_exp
     return False, False, False
 
 # Fetch data and update graphs on click of submit
-@app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_body_fat', 'figure'), Output('body_fat_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_eov', 'figure'), Output('eov_table', 'children'), Output('graph_sleep', 'figure'), Output('sleep_data_table', 'children'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise_log_table', 'children'), Output('workout-date-selector', 'options'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('sleep-date-selector', 'options'), Output('graph_exercise_sleep_correlation', 'figure'), Output('graph_azm_sleep_correlation', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
+def format_duration(minutes):
+    """Format minutes into 'Xh Ym' string"""
+    if not minutes:
+        return "0m"
+    hours = int(minutes // 60)
+    mins = int(minutes % 60)
+    if hours > 0:
+        return f"{hours}h {mins}m"
+    return f"{mins}m"
+
+@app.callback(Output('report-title', 'children'), Output('date-range-title', 'children'), Output('generated-on-title', 'children'), Output('graph_RHR', 'figure'), Output('RHR_table', 'children'), Output('graph_steps', 'figure'), Output('graph_steps_heatmap', 'figure'), Output('steps_table', 'children'), Output('graph_activity_minutes', 'figure'), Output('fat_burn_table', 'children'), Output('cardio_table', 'children'), Output('peak_table', 'children'), Output('graph_weight', 'figure'), Output('weight_table', 'children'), Output('graph_body_fat', 'figure'), Output('body_fat_table', 'children'), Output('graph_spo2', 'figure'), Output('spo2_table', 'children'), Output('graph_eov', 'figure'), Output('eov_table', 'children'), Output('graph_sleep', 'figure'), Output('sleep_data_table', 'children'), Output('graph_sleep_regularity', 'figure'), Output('sleep_table', 'children'), Output('sleep-stage-checkbox', 'options'), Output('graph_hrv', 'figure'), Output('hrv_table', 'children'), Output('graph_breathing', 'figure'), Output('breathing_table', 'children'), Output('graph_cardio_fitness', 'figure'), Output('cardio_fitness_table', 'children'), Output('graph_temperature', 'figure'), Output('temperature_table', 'children'), Output('graph_azm', 'figure'), Output('azm_table', 'children'), Output('graph_calories', 'figure'), Output('graph_distance', 'figure'), Output('calories_table', 'children'), Output('graph_floors', 'figure'), Output('floors_table', 'children'), Output('exercise_log_table', 'children'), Output('workout-date-selector', 'options'), Output('graph_sleep_score', 'figure'), Output('graph_sleep_stages_pie', 'figure'), Output('sleep-date-selector', 'options'), Output('graph_exercise_sleep_correlation', 'figure'), Output('graph_azm_sleep_correlation', 'figure'), Output('graph_exercise_timeline', 'figure'), Output('correlation_insights', 'children'), Output("loading-output-1", "children"),
 Input('submit-button', 'n_clicks'),
 State('my-date-picker-range', 'start_date'), State('my-date-picker-range', 'end_date'), State('oauth-token', 'data'),
 prevent_initial_call=True)
@@ -3730,7 +3773,8 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
     response_distance = {"activities-distance": []}
     response_floors = {"activities-floors": []}
     response_azm = {"activities-active-zone-minutes": []}
-    response_activities = {"activities": []}
+    response_azm = {"activities-active-zone-minutes": []}
+    # response_activities = {"activities": []}  <-- REMOVED to preserve cached activities
 
     # Processing data-----------------------------------------------------------------------------------------------------------------------
     days_name_list = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday','Sunday')
@@ -4511,8 +4555,8 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
                           (" (Positive - More exercise correlates with better sleep!)" if corr_coef > 0.3 else 
                            " (Negative - Heavy exercise may be affecting sleep)" if corr_coef < -0.3 else 
                            " (Weak correlation)")),
-                    html.P(f"💪 Average sleep after workout days: {avg_exercise_sleep:.0f} minutes" if not pd.isna(avg_exercise_sleep) else ""),
-                    html.P(f"😴 Average sleep on rest days: {avg_no_exercise_sleep:.0f} minutes" if not pd.isna(avg_no_exercise_sleep) else ""),
+                    html.P(f"💪 Average sleep after workout days: {format_duration(avg_exercise_sleep)}" if not pd.isna(avg_exercise_sleep) else ""),
+                    html.P(f"😴 Average sleep on rest days: {format_duration(avg_no_exercise_sleep)}" if not pd.isna(avg_no_exercise_sleep) else ""),
                     html.P(f"✨ Best practice: Your data suggests exercising in the {'morning/afternoon' if corr_coef > 0 else 'earlier hours'} for optimal sleep quality.")
                 ])
             else:
@@ -4533,15 +4577,20 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
         
         # Get Sleep Score for this date
         cached_sleep = cache.get_sleep_data(date_str)
-        if cached_sleep and cached_sleep['sleep_score'] is not None:
-            sleep_score = cached_sleep['sleep_score']
-            azm_sleep_data.append({
-                'Date': date_str,
-                'Active Zone Minutes': azm,
-                'Sleep Score': sleep_score
-            })
-        elif date_str in sleep_record_dict and sleep_record_dict[date_str].get('sleep_score'):
-            sleep_score = sleep_record_dict[date_str]['sleep_score']
+        sleep_score = None
+        
+        if cached_sleep:
+            # Try Reality Score first, then Proxy, then Efficiency
+            sleep_score = cached_sleep.get('reality_score')
+            if sleep_score is None:
+                sleep_score = cached_sleep.get('proxy_score')
+            if sleep_score is None:
+                sleep_score = cached_sleep.get('efficiency')
+                
+        elif date_str in sleep_record_dict:
+             sleep_score = sleep_record_dict[date_str].get('sleep_score')
+             
+        if sleep_score is not None:
             azm_sleep_data.append({
                 'Date': date_str,
                 'Active Zone Minutes': azm,
@@ -4570,11 +4619,96 @@ def update_output(n_clicks, start_date, end_date, oauth_token):
             fig_azm_sleep_correlation = px.scatter(title='AZM-Sleep Correlation (Insufficient Data)')
     else:
         fig_azm_sleep_correlation = px.scatter(title='AZM-Sleep Correlation (Insufficient Data)')
-    
+
+    # Populate activities_by_date for the timeline graph
+    activities_by_date = {}
+    if response_activities and 'activities' in response_activities:
+        for act in response_activities['activities']:
+            try:
+                start_time = act.get('startTime')
+                if start_time:
+                    # Parse date from startTime (e.g., "2023-10-27T14:30:00.000")
+                    date_str = start_time.split('T')[0]
+                    if date_str not in activities_by_date:
+                        activities_by_date[date_str] = []
+                    
+                    # Wrap in expected format for Phase 6 logic
+                    activities_by_date[date_str].append({
+                        'activity_data_json': json.dumps(act)
+                    })
+            except Exception as e:
+                print(f"Error grouping activity for timeline: {e}")
+
+    # Phase 6: Exercise Timeline (Calories vs Sleep Score)
+    exercise_timeline_data = []
+    for date_str in dates_str_list:
+        # Get activities
+        activities = activities_by_date.get(date_str, [])
+        total_cals = 0
+        has_exercise = False
+        
+        for act in activities:
+            try:
+                act_data = json.loads(act.get('activity_data_json', '{}'))
+                if act_data:
+                    total_cals += act_data.get('calories', 0)
+                    has_exercise = True
+            except:
+                pass
+        
+        # Get Next Day Sleep Score
+        try:
+            next_day = (datetime.strptime(date_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+            cached_sleep = cache.get_sleep_data(next_day)
+            sleep_score = None
+            if cached_sleep:
+                 sleep_score = cached_sleep.get('reality_score')
+            
+            if has_exercise or sleep_score is not None:
+                exercise_timeline_data.append({
+                    'Date': date_str,
+                    'Exercise Calories': total_cals,
+                    'Next Day Sleep Score': sleep_score if sleep_score else 0
+                })
+        except Exception as e:
+            print(f"Error processing timeline for {date_str}: {e}")
+            
+    if exercise_timeline_data:
+        et_df = pd.DataFrame(exercise_timeline_data)
+        fig_exercise_timeline = go.Figure()
+        
+        # Bar for Calories
+        fig_exercise_timeline.add_trace(go.Bar(
+            x=et_df['Date'],
+            y=et_df['Exercise Calories'],
+            name='Exercise Calories',
+            marker_color='#e67e22'
+        ))
+        
+        # Line for Sleep Score
+        fig_exercise_timeline.add_trace(go.Scatter(
+            x=et_df['Date'],
+            y=et_df['Next Day Sleep Score'],
+            name='Next Day Sleep Score',
+            yaxis='y2',
+            mode='lines+markers',
+            line=dict(color='#2c3e50', width=3)
+        ))
+        
+        fig_exercise_timeline.update_layout(
+            title='Exercise Intensity vs Next Day Sleep Quality',
+            yaxis=dict(title='Calories Burned'),
+            yaxis2=dict(title='Sleep Score', overlaying='y', side='right', range=[0, 100]),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            hovermode='x unified'
+        )
+    else:
+        fig_exercise_timeline = px.bar(title='No Exercise/Sleep Data for Timeline')
+
     # 🐞 FIX: Serialize the collected activity data to JSON for the dcc.Store
     exercise_data_json = json.dumps(activities_by_date)
 
-    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_body_fat, body_fat_summary_table, fig_spo2, spo2_summary_table, fig_eov, eov_summary_table, fig_sleep_minutes, sleep_data_table_output, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_log_table, workout_dates_for_dropdown, fig_sleep_score, fig_sleep_stages_pie, sleep_dates_for_dropdown, fig_correlation, fig_azm_sleep_correlation, correlation_insights, ""
+    return report_title, report_dates_range, generated_on_date, fig_rhr, rhr_summary_table, fig_steps, fig_steps_heatmap, steps_summary_table, fig_activity_minutes, fat_burn_summary_table, cardio_summary_table, peak_summary_table, fig_weight, weight_summary_table, fig_body_fat, body_fat_summary_table, fig_spo2, spo2_summary_table, fig_eov, eov_summary_table, fig_sleep_minutes, sleep_data_table_output, fig_sleep_regularity, sleep_summary_table, [{'label': 'Color Code Sleep Stages', 'value': 'Color Code Sleep Stages','disabled': False}], fig_hrv, hrv_summary_table, fig_breathing, breathing_summary_table, fig_cardio_fitness, cardio_fitness_summary_table, fig_temperature, temperature_summary_table, fig_azm, azm_summary_table, fig_calories, fig_distance, calories_summary_table, fig_floors, floors_summary_table, exercise_log_table, workout_dates_for_dropdown, fig_sleep_score, fig_sleep_stages_pie, sleep_dates_for_dropdown, fig_correlation, fig_azm_sleep_correlation, fig_exercise_timeline, correlation_insights, ""
 
 # ========================================
 # REST API Endpoints for MCP Server Integration
