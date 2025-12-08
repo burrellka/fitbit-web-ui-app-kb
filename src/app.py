@@ -1491,6 +1491,53 @@ def fetch_todays_stats(date_str, access_token):
             print(f"   💾 Saving activity metrics to cache: {list(activity_updates.keys())}")
             cache.set_daily_metrics(date=date_str, **activity_updates)
 
+        # 2b. Activity Log (Workouts) - NEW
+        # Fetch detailed activity log for this date
+        try:
+            # afterDate = yesterday -> returns activities for today
+            yesterday_dt = datetime.strptime(date_str, "%Y-%m-%d") - timedelta(days=1)
+            yesterday_str = yesterday_dt.strftime("%Y-%m-%d")
+            
+            url = f"https://api.fitbit.com/1/user/-/activities/list.json?afterDate={yesterday_str}&sort=asc&offset=0&limit=50"
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                activities = data.get('activities', [])
+                
+                # Filter for this specific date only (API might return more)
+                todays_activities = [a for a in activities if a.get('startTime', '').startswith(date_str)]
+                
+                if todays_activities:
+                    # Look up process_and_cache helper - wait, it expects full response structure
+                    # We can manually cache since we have the list
+                    count = 0
+                    for act in todays_activities:
+                        # Construct cache entry
+                        # We need to serialize the full JSON for the cache to enable details view
+                        import json
+                        act_json = json.dumps(act)
+                        
+                        cache.store_activity(
+                            log_id=act.get('logId'),
+                            name=act.get('activityName'),
+                            duration=act.get('duration'),
+                            calories=act.get('calories'),
+                            hr=act.get('averageHeartRate'),
+                            steps=act.get('steps'),
+                            distance=act.get('distance'), # in km usually
+                            json_data=act_json,
+                            date=date_str
+                        )
+                        count += 1
+                    fetched_data['activities'] = True
+                    print(f"   ✅ Fetched {count} activities/workouts")
+                else:
+                    print(f"   ℹ️ No activities logged for {date_str}")
+            else:
+                print(f"   ⚠️ Failed to fetch activities list: {response.status_code}")
+        except Exception as e:
+            print(f"   ⚠️ Exception fetching activities list: {e}")
+
         # 3. Weight
         url = f"https://api.fitbit.com/1/user/-/body/log/weight/date/{date_str}/1d.json"
         response = requests.get(url, headers=headers)
@@ -4789,6 +4836,52 @@ def api_get_sleep_data(date):
                 'message': f'No sleep data found for {date}'
             }), 404
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@server.route('/api/refresh_daily_stats', methods=['POST'])
+@require_api_key
+def api_refresh_daily_stats():
+    """
+    Trigger an on-demand refresh of daily stats (activities, sleep, etc.) for a specific date.
+    Used by the MCP Server to ensure data is up-to-date before answering questions.
+    Payload: {"date": "YYYY-MM-DD"}
+    """
+    try:
+        data = request.json
+        date_str = data.get('date')
+        
+        if not date_str:
+            return jsonify({'success': False, 'error': 'Date is required'}), 400
+            
+        print(f"🔄 Manual Sync Triggered for {date_str} via API")
+        
+        # Get valid access token
+        refresh_token = cache.get_refresh_token()
+        if not refresh_token:
+            return jsonify({'success': False, 'error': 'No refresh token available. Login required.'}), 401
+            
+        access_token, new_refresh, expiry = refresh_access_token(refresh_token)
+        if not access_token:
+             return jsonify({'success': False, 'error': 'Failed to refresh access token'}), 500
+             
+        # Update refresh token if changed
+        if new_refresh and new_refresh != refresh_token:
+             cache.store_refresh_token(new_refresh, 28800)
+             
+        # Fetch Data
+        result = fetch_todays_stats(date_str, access_token)
+        
+        if result:
+            return jsonify({
+                'success': True,
+                'message': f'Successfully refreshed data for {date_str}',
+                'details': result
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Fetch failed (check server logs)'}), 500
+            
+    except Exception as e:
+        print(f"❌ Error in manual sync API: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @server.route('/api/data/metrics/<date>', methods=['GET'])

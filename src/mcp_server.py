@@ -1,5 +1,5 @@
 
-from fastmcp import FastMCP
+import requests
 import os
 import sys
 import json
@@ -20,6 +20,38 @@ mcp = FastMCP("Fitbit Health Coach")
 cache = FitbitCache()
 
 # --- Helpers ---
+
+def _trigger_sync(date_str: str):
+    """
+    Trigger the Main App to refresh data for a specific date.
+    Fire-and-forget (ish) - we wait for success but don't crash if it fails.
+    """
+    try:
+        # Only sync for "Today" or "Yesterday" (most likely to have new data)
+        # Avoid syncing old history to keep it fast
+        today = datetime.now().strftime("%Y-%m-%d")
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        
+        if date_str not in [today, yesterday]:
+            return
+
+        api_key = os.environ.get('API_KEY', '')
+        url = "http://localhost:5033/api/refresh_daily_stats"
+        headers = {
+            "Content-Type": "application/json",
+            "X-API-Key": api_key
+        }
+        
+        # print(f"🚀 Triggering reactive sync for {date_str}...") # stdout logs
+        response = requests.post(url, json={"date": date_str}, headers=headers, timeout=5)
+        
+        if response.status_code == 200:
+            pass # print("✅ Sync successful")
+        else:
+            print(f"⚠️ Sync failed: {response.status_code} {response.text}")
+            
+    except Exception as e:
+        print(f"⚠️ Sync trigger error: {e}")
 
 def _calculate_readiness(date: str) -> Dict[str, Any]:
     """
@@ -118,6 +150,9 @@ def get_daily_snapshot(date: str, sessionId: str = "", action: str = "", chatInp
         date: Date in 'YYYY-MM-DD' format (e.g., '2023-10-27').
     """
     try:
+        # REACTIVE SYNC: Refresh data if calling for today/yesterday
+        _trigger_sync(date)
+        
         daily = cache.get_daily_metrics(date)
         sleep = cache.get_sleep_data(date)
         advanced = cache.get_advanced_metrics(date)
@@ -301,6 +336,9 @@ def get_workout_history(start_date: str, end_date: str, sessionId: str = "", act
         end_date: End date in 'YYYY-MM-DD' format.
     """
     try:
+        # REACTIVE SYNC: Refresh data if range touches today/yesterday
+        _trigger_sync(end_date)
+
         activities = cache.get_activities_in_range(start_date, end_date)
         if not activities:
             return f"No workouts found between {start_date} and {end_date}."
@@ -592,6 +630,9 @@ def get_activity_log(start_date: str, end_date: str, sessionId: str = "", action
     Get a raw list of activities for a date range.
     """
     try:
+        # REACTIVE SYNC: Refresh data
+        _trigger_sync(end_date)
+        
         activities = cache.get_activities_in_range(start_date, end_date)
         if not activities:
             return f"No activities found between {start_date} and {end_date}."
