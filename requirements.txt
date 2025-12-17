@@ -7,3 +7,5 @@ gunicorn
 fastmcp
 dash-tools
 statsmodels>=0.14.0
+uvicorn[standard]
+fastapi
