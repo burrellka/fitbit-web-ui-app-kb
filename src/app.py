@@ -5854,6 +5854,17 @@ def api_cache_csv():
     except Exception as e:
         return Response(f'Error: {str(e)}', status=500)
 
+# Start background synchronization thread
+# This ensures it runs even when deployed via Gunicorn
+def start_background_tasks():
+    global auto_sync_thread
+    if not auto_sync_running:
+        auto_sync_thread = threading.Thread(target=automatic_daily_sync, daemon=True)
+        auto_sync_thread.start()
+        print("🚀 Background auto-sync thread initialized")
+
+start_background_tasks()
+
 if __name__ == '__main__':
     app.run_server(debug=True)
 
