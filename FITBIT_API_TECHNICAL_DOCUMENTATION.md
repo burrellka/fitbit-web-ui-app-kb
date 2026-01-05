@@ -932,6 +932,41 @@ Testing with real user data (October 2025):
 
 ---
 
+## 🧠 Exercise-Sleep Insights Logic
+
+The "Insights" section at the bottom of the dashboard uses statistical correlation analysis to personalize recommendations. It is **not** generative AI; it is deterministic logic running on your cached data.
+
+### 1. Correlation Coefficient (Pearson)
+
+We calculate the **Pearson correlation coefficient ($r$)** between two variables:
+1.  **X:** Daily Active Calories Burned (from exercise logs)
+2.  **Y:** *Next Day's* Total Sleep Duration (in minutes)
+
+**Logic:**
+*   **Range:** -1.0 to +1.0
+*   **Interpretation:**
+    *   **$r > 0.3$ (Positive):** "More exercise correlates with better sleep!" (Green)
+    *   **$r < -0.3$ (Negative):** "Heavy exercise may be affecting sleep." (Red)
+    *   **Between -0.3 and 0.3:** "Weak correlation." (Gray)
+
+### 2. "Workout Days" vs "Rest Days"
+
+To provide comparative metrics (e.g., "Average sleep after workout..."), we categorize days based on intensity:
+*   **Workout Day:** Any day with **> 100 Calories** burned via recorded exercise.
+*   **Rest Day:** Any day with **≤ 100 Calories** burned via recorded exercise (excluding 0-calorie days due to missing data).
+
+### 3. "Best Practice" Recommendation
+
+The advice text is dynamically determined by the correlation direction ($r$):
+*   **If $r > 0$ (Positive):**
+    *   *Advice:* "Your data suggests exercising in the **morning/afternoon** for optimal sleep quality."
+    *   *Rationale:* Since exercise currently boosts your sleep, we recommend maintaining this habit during standard active hours.
+*   **If $r < 0$ (Negative):**
+    *   *Advice:* "Your data suggests exercising in the **earlier hours** for optimal sleep quality."
+    *   *Rationale:* Since higher intensity aligns with *worse* sleep, we suggest moving workouts earlier to allow cortisol/adrenaline levels to drop before bed.
+
+---
+
 ## 🎯 Recommendations
 
 1. **Always use cache** for historical data

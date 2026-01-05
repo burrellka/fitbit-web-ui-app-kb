@@ -67,6 +67,7 @@
 > **📘 Why Custom Scores?** The official Fitbit Sleep Score is NOT available via Personal OAuth apps. Our calculated scores use the same raw data (sleep stages, duration, fragmentation) with validated formulas. See [Technical Documentation](FITBIT_API_TECHNICAL_DOCUMENTATION.md#-custom-sleep-score-calculation-system) for details.
 
 #### 🔗 Exercise-Sleep Correlations
+> **📘 Logic Explained:** See [Insights Logic Documentation](FITBIT_API_TECHNICAL_DOCUMENTATION.md#exercise-sleep-insights-logic) for the deterministic algorithms used here.
 - **AI-Powered Insights** - Discover how your workouts impact your sleep quality
 - **Correlation Analysis** - Statistical analysis showing relationship between exercise and next-day sleep
 - **Personalized Recommendations** - Smart suggestions for optimal workout timing
@@ -74,6 +75,7 @@
 - **Comparative Metrics** - See average sleep on workout days vs. rest days
 
 ### 🚀 Intelligent Caching System 🆕
+> **📘 Recursive Guide:** See [Comprehensive Cache System Guide](CACHE_SYSTEM_GUIDE.md)
 - **Hourly Background Builder** - Automatically fetches and caches historical data every hour
 - **3-Phase Strategy** - Efficiently fills 365 days of data using ~125 API calls per hour
 - **Real-Time Today Refresh** - Always fetches fresh data for today when generating reports or via API
@@ -88,6 +90,7 @@
   - Perfect for data analysis, backups, and sharing with healthcare providers
 
 ### 🔌 MCP Server Ready 🆕
+> **📘 Setup & Usage:** See [MCP Usage Guide](MCP_USAGE_GUIDE.md) and [API Reference](API_DOCUMENTATION.md)
 - **RESTful API Endpoints** - Full API for LLM integration via Model Context Protocol (MCP)
 - **Smart Data Retrieval** - GET endpoints for sleep, metrics, exercise, and activities
 - **Cache Management API** - Endpoints for cache status, flush, and manual refresh
@@ -348,7 +351,7 @@ This fork represents a **fundamental architectural shift** from the original pro
 ## ⚠️ Important Disclaimer
 
 ### Code Authorship
-While maintained by **[@burrellka](https://github.com/burrellka)** (a business transformation and process architect), **all code in this enhanced edition was written by Cursor AI** (Claude Sonnet 4.5) to meet specific personal homelab requirements.
+While maintained by **[@burrellka](https://github.com/burrellka)** (a business transformation and process architect), **all code in this enhanced edition was written by Google DeepMind's Antigravity** to meet specific personal homelab requirements.
 
 **What this means:**
 - ✅ This is a **production-grade personal project** running on my homelab

@@ -1,7 +1,7 @@
 # 🎓 Fitbit Health Coach MCP Server - Usage Guide
 
 ## Overview
-This MCP server transforms your Fitbit data into an intelligent "Health Coach" for AI agents (like Claude, Cursor, or Windsurf). It doesn't just fetch numbers; it calculates readiness, analyzes sleep consistency, and finds hidden trends in your health data.
+This MCP server transforms your Fitbit data into an intelligent "Health Coach" for AI agents (like Google DeepMind's Antigravity). It doesn't just fetch numbers; it calculates readiness, analyzes sleep consistency, and finds hidden trends in your health data.
 
 ## 🚀 Getting Started
 
