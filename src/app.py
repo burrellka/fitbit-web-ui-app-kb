@@ -2642,7 +2642,7 @@ def display_workout_details(selected_date, oauth_token, refresh_token, token_exp
                 print(f"✅ [WORKOUT_DETAILS] Token refreshed successfully")
                 
                 # Return new tokens to update client-side stores
-                return generate_workout_detail_view(selected_date), new_access, new_refresh, new_expiry
+                return generate_workout_detail_view(selected_date, oauth_token), new_access, new_refresh, new_expiry
             else:
                 print(f"⚠️ [WORKOUT_DETAILS] Token refresh failed")
                 return html.Div("Error: Token refresh failed. Please log in again.", style={'color': 'red'}), no_update, no_update, no_update
@@ -2653,9 +2653,9 @@ def display_workout_details(selected_date, oauth_token, refresh_token, token_exp
             return html.Div(f"Error refreshing token: {e}", style={'color': 'red'}), no_update, no_update, no_update
     # === END CRITICAL FIX #2 ===
     
-    return generate_workout_detail_view(selected_date), no_update, no_update, no_update
+    return generate_workout_detail_view(selected_date, oauth_token), no_update, no_update, no_update
 
-def generate_workout_detail_view(selected_date):
+def generate_workout_detail_view(selected_date, oauth_token=None):
     """Helper to generate the workout detail view content"""
     # Get stored activity data for the date directly from cache
     activities_from_cache = cache.get_activities(selected_date)
